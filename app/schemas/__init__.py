@@ -9,6 +9,7 @@ from .document import (
     DocumentStatusUpdate,
     DocumentListRead,
 )
+from .document_template import DocumentTemplateCreate, DocumentTemplateRead, DocumentTemplateUpdate
 
 __all__ = [
     "UserCreate", "UserRead", "UserUpdate", "Token", "TokenData",
@@ -16,4 +17,5 @@ __all__ = [
     "DocumentItemCreate", "DocumentItemRead",
     "DocumentCreate", "DocumentRead", "DocumentUpdate",
     "DocumentStatusUpdate", "DocumentListRead",
+    "DocumentTemplateCreate", "DocumentTemplateRead", "DocumentTemplateUpdate",
 ]

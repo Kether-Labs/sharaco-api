@@ -46,6 +46,7 @@ class DocumentItemRead(BaseModel):
 class DocumentCreate(BaseModel):
     type: DocumentType = DocumentType.DEVIS
     client_id: UUID
+    template_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
     items: List[DocumentItemCreate]
 
@@ -66,6 +67,7 @@ class DocumentRead(BaseModel):
     due_date: Optional[datetime] = None
     user_id: UUID
     client_id: UUID
+    template_id: Optional[UUID] = None
     items: List[DocumentItemRead] = []
 
     # Totaux calculés (pas en DB, calculés à la volée)
@@ -79,6 +81,7 @@ class DocumentRead(BaseModel):
 class DocumentUpdate(BaseModel):
     status: Optional[DocumentStatus] = None
     due_date: Optional[datetime] = None
+    template_id: Optional[UUID] = None
 
 
 class DocumentStatusUpdate(BaseModel):
@@ -94,6 +97,7 @@ class DocumentListRead(BaseModel):
     created_at: datetime
     due_date: Optional[datetime] = None
     client_id: UUID
+    template_id: Optional[UUID] = None
     grand_total_cents: Optional[int] = None
 
     model_config = {"from_attributes": True}

@@ -29,11 +29,21 @@ class Document(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
     due_date: Optional[datetime] = None
 
+    # === Relations ===
     owner: "User" = Relationship(back_populates="documents")
     user_id: UUID = Field(foreign_key="user.id")
     client_id: UUID = Field(foreign_key="client.id")
-
     client: "Client" = Relationship(back_populates="documents")
+
+    # === Template de design ===
+    template_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="documenttemplate.id",
+        description="Template de design appliqué au document"
+    )
+    template: Optional["DocumentTemplate"] = Relationship(back_populates="documents")
+
+    # === Lignes du document ===
     items: List["DocumentItem"] = Relationship(back_populates="document")
 
 
