@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document.type.value }} - {{ document.number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: {
+                    {
+                    template.font_family
+                }
+            }
+
+            ,
+            'Helvetica Neue',
+            Arial,
+            sans-serif;
+
+            color: {
+                    {
+                    template.text_color
+                }
+            }
+
+            ;
+            font-size: 11px;
+            line-height: 1.5;
+
+            background: {
+                    {
+                    template.background_color
+                }
+            }
+
+            ;
+        }
+
+        /* === HEADER === */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+
+            border-bottom: 3px solid {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+        }
+
+        .header-left {
+            flex: 1;
+        }
+
+        .header-left .logo {
+            max-height: 60px;
+            margin-bottom: 10px;
+        }
+
+        .header-left .company-name {
+            font-size: 18px;
+            font-weight: 700;
+
+            color: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+        }
+
+        .header-left .company-details {
+            font-size: 10px;
+            color: #6B7280;
+            margin-top: 4px;
+        }
+
+        .header-right {
+            text-align: right;
+        }
+
+        .doc-type {
+            font-size: 24px;
+            font-weight: 800;
+
+            color: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .doc-number {
+            font-size: 14px;
+
+            color: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            margin-top: 4px;
+        }
+
+        .doc-date {
+            font-size: 10px;
+            color: #6B7280;
+            margin-top: 8px;
+        }
+
+        /* === INFOS === */
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+
+        .info-box {
+            flex: 1;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        .info-box.from {
+            background: {
+                    {
+                    template.accent_color
+                }
+            }
+
+            ;
+            margin-right: 15px;
+        }
+
+        .info-box.to {
+            background: #F9FAFB;
+            border: 1px solid #E5E7EB;
+        }
+
+        .info-box .label {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+
+            color: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            margin-bottom: 8px;
+        }
+
+        .info-box .name {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .info-box .detail {
+            font-size: 10px;
+            color: #6B7280;
+        }
+
+        /* === TABLE === */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+
+        .items-table thead th {
+            background: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            color: white;
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .items-table thead th:last-child,
+        .items-table thead th:nth-child(n+3) {
+            text-align: right;
+        }
+
+        .items-table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #E5E7EB;
+            font-size: 11px;
+        }
+
+        .items-table tbody td:last-child,
+        .items-table tbody td:nth-child(n+3) {
+            text-align: right;
+        }
+
+        .items-table tbody tr:nth-child(even) {
+            background: #F9FAFB;
+        }
+
+        /* === TOTALS === */
+        .totals-section {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 30px;
+        }
+
+        .totals-box {
+            width: 280px;
+        }
+
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 11px;
+        }
+
+        .totals-row.grand-total {
+            border-top: 2px solid {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            margin-top: 8px;
+            padding-top: 10px;
+            font-size: 16px;
+            font-weight: 700;
+
+            color: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+        }
+
+        .totals-row .label {
+            color: #6B7280;
+        }
+
+        .totals-row.grand-total .label {
+            color: {
+                    {
+                    template.text_color
+                }
+            }
+
+            ;
+        }
+
+        /* === FOOTER === */
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 1px solid #E5E7EB;
+            font-size: 9px;
+            color: #9CA3AF;
+        }
+
+        .footer .footer-text {
+            margin-bottom: 6px;
+        }
+
+        .footer .bank-details {
+            background: #F9FAFB;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .footer .bank-details .label {
+            font-weight: 600;
+
+            color: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            margin-bottom: 4px;
+        }
+
+        /* === STATUS BADGE === */
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-draft {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-sent {
+            background: #DBEAFE;
+            color: #1E40AF;
+        }
+
+        .status-paid {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            {% if template.logo_url %}
+            <img src="{{ template.logo_url }}" alt="Logo" class="logo">
+            {% endif %}
+            {% if template.header_text %}
+            <div class="company-name">{{ template.header_text }}</div>
+            {% else %}
+            <div class="company-name">{{ user.company_name or '' }}</div>
+            {% endif %}
+            <div class="company-details">
+                {% if user.address %}{{ user.address }}<br>{% endif %}
+                {% if template.show_tax_id and user.tax_id %}NIF/SIRET : {{ user.tax_id }}<br>{% endif %}
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="doc-type">{{ document.type.value }}</div>
+            <div class="doc-number">{{ document.number }}</div>
+            <div class="doc-date">
+                Date : {{ document.created_at.strftime('%d/%m/%Y') }}<br>
+                {% if document.due_date %}Echeance : {{ document.due_date.strftime('%d/%m/%Y') }}{% endif %}
+            </div>
+            <div style="margin-top:8px;">
+                <span class="status-badge status-{{ document.status.value.lower() }}">
+                    {{ document.status.value }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- INFO SECTION -->
+    <div class="info-section">
+        <div class="info-box from">
+            <div class="label">Emetteur</div>
+            <div class="name">{{ user.company_name or user.email }}</div>
+            {% if user.address %}<div class="detail">{{ user.address }}</div>{% endif %}
+            {% if template.show_tax_id and user.tax_id %}<div class="detail">NIF/SIRET : {{ user.tax_id }}</div>{% endif
+            %}
+        </div>
+        <div class="info-box to">
+            <div class="label">Destinataire</div>
+            <div class="name">{{ client.name }}</div>
+            {% if client.email %}<div class="detail">{{ client.email }}</div>{% endif %}
+            {% if client.address %}<div class="detail">{{ client.address }}</div>{% endif %}
+            {% if client.phone %}<div class="detail">{{ client.phone }}</div>{% endif %}
+        </div>
+    </div>
+
+    <!-- ITEMS TABLE -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 45%;">Description</th>
+                <th style="width: 10%;">Qte</th>
+                <th style="width: 18%;">Prix unitaire</th>
+                <th style="width: 10%;">TVA</th>
+                <th style="width: 17%;">Total HT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.description }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
+                <td>{{ item.tax_rate }}%</td>
+                <td>{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{ currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- TOTALS -->
+    <div class="totals-section">
+        <div class="totals-box">
+            <div class="totals-row">
+                <span class="label">Sous-total HT</span>
+                <span>{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</span>
+            </div>
+            <div class="totals-row">
+                <span class="label">TVA</span>
+                <span>{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</span>
+            </div>
+            <div class="totals-row grand-total">
+                <span class="label">Total TTC</span>
+                <span>{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        {% if template.footer_text %}
+        <div class="footer-text">{{ template.footer_text }}</div>
+        {% endif %}
+
+        {% if template.show_bank_details and user.payment_info %}
+        <div class="bank-details">
+            <div class="label">Coordonnees bancaires</div>
+            <div>{{ user.payment_info }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+</body>
+
+</html>

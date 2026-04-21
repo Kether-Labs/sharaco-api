@@ -15,3 +15,4 @@ class User(SQLModel, table=True):
     clients: List["Client"] = Relationship(back_populates="owner")
     documents: List["Document"] = Relationship(back_populates="owner")
     templates: List["DocumentTemplate"] = Relationship(back_populates="owner")
+    reminder_configs: List["ReminderConfig"] = Relationship(back_populates="owner")

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ subject }}</title>
+</head>
+
+<body style="margin: 0; padding: 0; background-color: #F3F4F6; font-family: 'Helvetica Neue', Arial, sans-serif;">
+
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+        style="background-color: #F3F4F6; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0"
+                    style="background-color: #FFFFFF; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+
+                    <!-- HEADER -->
+                    <tr>
+                        <td style="background-color: {{ primary_color }}; padding: 30px 40px;">
+                            <h1 style="margin: 0; color: #FFFFFF; font-size: 22px; font-weight: 700;">
+                                {{ company_name }}
+                            </h1>
+                            <p style="margin: 6px 0 0; color: rgba(255,255,255,0.8); font-size: 13px;">
+                                {{ doc_type }} N° {{ doc_number }}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- BODY -->
+                    <tr>
+                        <td style="padding: 30px 40px;">
+                            <p style="margin: 0 0 16px; font-size: 15px; color: #1F2937;">
+                                Bonjour {{ client_name }},
+                            </p>
+
+                            <p style="margin: 0 0 16px; font-size: 14px; color: #4B5563; line-height: 1.6;">
+                                {% if is_reminder %}
+                                Nous vous contactons concernant le {{ doc_type|lower }} <strong>{{ doc_number
+                                    }}</strong>
+                                que nous vous avons envoyé le {{ sent_date }}.
+                                Celui-ci est toujours en attente de votre réponse.
+                                {% else %}
+                                Veuillez trouver ci-joint notre {{ doc_type|lower }} <strong>{{ doc_number }}</strong>
+                                d'un montant de <strong>{{ grand_total }}</strong>.
+                                {% endif %}
+                            </p>
+
+                            {% if is_reminder %}
+                            <p style="margin: 0 0 20px; font-size: 14px; color: #4B5563; line-height: 1.6;">
+                                Nous vous invitons à consulter le document en cliquant sur le bouton ci-dessous.
+                            </p>
+                            {% endif %}
+
+                            <!-- CTA BUTTON -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: {{ primary_color }}; border-radius: 8px;">
+                                        <a href="{{ document_link }}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #FFFFFF;
+                                                  text-decoration: none; font-size: 14px; font-weight: 600;">
+                                            {% if is_reminder %}
+                                            Voir le {{ doc_type|lower }}
+                                            {% else %}
+                                            Consulter le {{ doc_type|lower }}
+                                            {% endif %}
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- AMOUNT BOX -->
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+                                style="margin: 20px 0; background-color: #F9FAFB; border-radius: 8px; border: 1px solid #E5E7EB;">
+                                <tr>
+                                    <td style="padding: 16px 20px;">
+                                        <p
+                                            style="margin: 0; font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">
+                                            Montant total TTC</p>
+                                        <p
+                                            style="margin: 4px 0 0; font-size: 24px; font-weight: 700; color: {{ primary_color }};">
+                                            {{ grand_total }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin: 0 0 8px; font-size: 13px; color: #6B7280;">
+                                {% if due_date %}Date d'echeance : <strong>{{ due_date }}</strong>{% endif %}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- FOOTER -->
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #F9FAFB; border-top: 1px solid #E5E7EB;">
+                            <p style="margin: 0 0 6px; font-size: 11px; color: #9CA3AF;">
+                                Cet email a ete envoye par {{ company_name }} via Sharaco.
+                            </p>
+                            <p style="margin: 0; font-size: 11px; color: #9CA3AF;">
+                                {% if company_address %}{{ company_address }}{% endif %}
+                            </p>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+
+</body>
+
+</html>

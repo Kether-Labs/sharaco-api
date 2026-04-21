@@ -1,0 +1,461 @@
+!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document.type.value }} - {{ document.number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: {
+                    {
+                    template.font_family
+                }
+            }
+
+            ,
+            'Helvetica Neue',
+            Arial,
+            sans-serif;
+
+            color: {
+                    {
+                    template.text_color
+                }
+            }
+
+            ;
+            font-size: 11px;
+            line-height: 1.6;
+            background: #FFFFFF;
+        }
+
+        /* === TOP BANNER === */
+        .banner {
+            background: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            color: white;
+            padding: 30px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .banner-left .logo {
+            max-height: 50px;
+            margin-bottom: 8px;
+        }
+
+        .banner-left .company-name {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .banner-left .company-detail {
+            font-size: 10px;
+            opacity: 0.85;
+            margin-top: 2px;
+        }
+
+        .banner-right {
+            text-align: right;
+        }
+
+        .banner-right .doc-type {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .banner-right .doc-number {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+
+        .banner-right .doc-date {
+            font-size: 10px;
+            opacity: 0.75;
+            margin-top: 6px;
+        }
+
+        /* === BODY === */
+        .body-content {
+            padding: 30px 40px;
+        }
+
+        /* === CLIENT CARD === */
+        .client-card {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+
+        .client-box {
+            padding: 18px;
+            border-radius: 10px;
+        }
+
+        .client-box.from {
+            background: {
+                    {
+                    template.accent_color
+                }
+            }
+
+            ;
+
+            border-left: 4px solid {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            flex: 1;
+            margin-right: 20px;
+        }
+
+        .client-box.to {
+            background: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            border-radius: 10px;
+            flex: 1;
+        }
+
+        .client-box .label {
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+
+            color: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            margin-bottom: 8px;
+        }
+
+        .client-box .name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .client-box .detail {
+            font-size: 10px;
+            color: #6B7280;
+            margin-top: 3px;
+        }
+
+        /* === STATUS === */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            background: #F9FAFB;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-draft {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-sent {
+            background: #DBEAFE;
+            color: #1E40AF;
+        }
+
+        .status-paid {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .status-bar .due-date {
+            font-size: 10px;
+            color: #6B7280;
+        }
+
+        /* === TABLE === */
+        .items-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-bottom: 25px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #E5E7EB;
+        }
+
+        .items-table thead th {
+            background: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            color: white;
+            padding: 12px 14px;
+            text-align: left;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .items-table thead th:last-child,
+        .items-table thead th:nth-child(n+3) {
+            text-align: right;
+        }
+
+        .items-table tbody td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #F3F4F6;
+            font-size: 11px;
+        }
+
+        .items-table tbody td:last-child,
+        .items-table tbody td:nth-child(n+3) {
+            text-align: right;
+        }
+
+        .items-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .items-table tbody tr:hover {
+            background: #FAFAFA;
+        }
+
+        /* === TOTALS === */
+        .totals-section {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 30px;
+        }
+
+        .totals-box {
+            width: 300px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 16px;
+            font-size: 11px;
+            background: #F9FAFB;
+            border-bottom: 1px solid #F3F4F6;
+        }
+
+        .totals-row .label {
+            color: #6B7280;
+        }
+
+        .totals-row.grand-total {
+            background: {
+                    {
+                    template.primary_color
+                }
+            }
+
+            ;
+            color: white;
+            font-size: 16px;
+            font-weight: 700;
+            border: none;
+        }
+
+        .totals-row.grand-total .label {
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        /* === FOOTER === */
+        .footer {
+            margin-top: 40px;
+            padding: 20px 40px;
+            background: #F9FAFB;
+            border-top: 1px solid #E5E7EB;
+            font-size: 9px;
+            color: #9CA3AF;
+        }
+
+        .footer .footer-text {
+            margin-bottom: 6px;
+        }
+
+        .footer .bank-details {
+            background: white;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-top: 10px;
+            border: 1px solid #E5E7EB;
+        }
+
+        .footer .bank-details .label {
+            font-weight: 600;
+
+            color: {
+                    {
+                    template.secondary_color
+                }
+            }
+
+            ;
+            margin-bottom: 4px;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- BANNER -->
+    <div class="banner">
+        <div class="banner-left">
+            {% if template.logo_url %}
+            <img src="{{ template.logo_url }}" alt="Logo" class="logo">
+            {% endif %}
+            {% if template.header_text %}
+            <div class="company-name">{{ template.header_text }}</div>
+            {% else %}
+            <div class="company-name">{{ user.company_name or '' }}</div>
+            {% endif %}
+            {% if user.address %}<div class="company-detail">{{ user.address }}</div>{% endif %}
+            {% if template.show_tax_id and user.tax_id %}<div class="company-detail">NIF/SIRET : {{ user.tax_id }}</div>
+            {% endif %}
+        </div>
+        <div class="banner-right">
+            <div class="doc-type">{{ document.type.value }}</div>
+            <div class="doc-number">{{ document.number }}</div>
+            <div class="doc-date">
+                {{ document.created_at.strftime('%d/%m/%Y') }}
+            </div>
+        </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body-content">
+
+        <!-- CLIENT CARD -->
+        <div class="client-card">
+            <div class="client-box from">
+                <div class="label">Emetteur</div>
+                <div class="name">{{ user.company_name or user.email }}</div>
+                {% if user.address %}<div class="detail">{{ user.address }}</div>{% endif %}
+                {% if template.show_tax_id and user.tax_id %}<div class="detail">NIF/SIRET : {{ user.tax_id }}</div>{%
+                endif %}
+            </div>
+            <div class="client-box to">
+                <div class="label">Destinataire</div>
+                <div class="name">{{ client.name }}</div>
+                {% if client.email %}<div class="detail">{{ client.email }}</div>{% endif %}
+                {% if client.address %}<div class="detail">{{ client.address }}</div>{% endif %}
+                {% if client.phone %}<div class="detail">{{ client.phone }}</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- STATUS -->
+        <div class="status-bar">
+            <span class="status-badge status-{{ document.status.value.lower() }}">{{ document.status.value }}</span>
+            {% if document.due_date %}
+            <span class="due-date">Echeance : {{ document.due_date.strftime('%d/%m/%Y') }}</span>
+            {% endif %}
+        </div>
+
+        <!-- ITEMS -->
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%;">Description</th>
+                    <th style="width: 10%;">Qte</th>
+                    <th style="width: 18%;">Prix unitaire</th>
+                    <th style="width: 10%;">TVA</th>
+                    <th style="width: 17%;">Total HT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.description }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
+                    <td>{{ item.tax_rate }}%</td>
+                    <td>{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- TOTALS -->
+        <div class="totals-section">
+            <div class="totals-box">
+                <div class="totals-row">
+                    <span class="label">Sous-total HT</span>
+                    <span>{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</span>
+                </div>
+                <div class="totals-row">
+                    <span class="label">TVA</span>
+                    <span>{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</span>
+                </div>
+                <div class="totals-row grand-total">
+                    <span class="label">Total TTC</span>
+                    <span>{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        {% if template.footer_text %}
+        <div class="footer-text">{{ template.footer_text }}</div>
+        {% endif %}
+        {% if template.show_bank_details and user.payment_info %}
+        <div class="bank-details">
+            <div class="label">Coordonnees bancaires</div>
+            <div>{{ user.payment_info }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+</body>
+
+</html>

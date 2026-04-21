@@ -10,6 +10,7 @@ from .document import (
     DocumentListRead,
 )
 from .document_template import DocumentTemplateCreate, DocumentTemplateRead, DocumentTemplateUpdate
+from .reminder import ReminderConfigCreate, ReminderConfigRead, ReminderConfigUpdate, ReminderLogRead
 
 __all__ = [
     "UserCreate", "UserRead", "UserUpdate", "Token", "TokenData",
@@ -18,4 +19,5 @@ __all__ = [
     "DocumentCreate", "DocumentRead", "DocumentUpdate",
     "DocumentStatusUpdate", "DocumentListRead",
     "DocumentTemplateCreate", "DocumentTemplateRead", "DocumentTemplateUpdate",
+    "ReminderConfigCreate", "ReminderConfigRead", "ReminderConfigUpdate", "ReminderLogRead",
 ]

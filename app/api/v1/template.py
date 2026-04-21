@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.services.templateService import TemplateService
+from app.services.pdfRenderer import pdf_renderer
 from app.schemas.document_template import DocumentTemplateCreate, DocumentTemplateRead, DocumentTemplateUpdate
 
 router = APIRouter(tags=["templates"])
@@ -77,6 +79,27 @@ async def get_template(
             detail="Modèle introuvable",
         )
     return template
+
+
+@router.get("/{template_id}/preview", response_class=HTMLResponse)
+async def preview_template(
+    template_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aperçu HTML d'un template avec de fausses données (pour la customisation)."""
+    template = await TemplateService.get_by_id(db, template_id, current_user.id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Modèle introuvable",
+        )
+
+    html_content = pdf_renderer.render_preview_html(
+        template=template,
+        user=current_user,
+    )
+    return HTMLResponse(content=html_content)
 
 
 @router.put("/{template_id}", response_model=DocumentTemplateRead)

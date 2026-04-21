@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import Optional
@@ -7,6 +8,8 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.document import DocumentType, DocumentStatus
 from app.services.documentService import DocumentService
+from app.services.templateService import TemplateService
+from app.services.pdfRenderer import pdf_renderer
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -38,6 +41,36 @@ def _enrich_document(doc, totals: dict) -> dict:
     return data
 
 
+async def _get_document_template(db: AsyncSession, document, user: User):
+    """Récupère le template du document, ou le template par défaut, ou en crée un fallback."""
+    if document.template_id:
+        tmpl = await TemplateService.get_by_id(db, document.template_id, user.id)
+        if tmpl:
+            return tmpl
+
+    # Template par défaut de l'utilisateur
+    default_tmpl = await TemplateService.get_default(db, user.id)
+    if default_tmpl:
+        return default_tmpl
+
+    # Fallback : template minimal en mémoire
+    from app.models.document_template import DocumentTemplate
+    return DocumentTemplate(
+        name="Par defaut",
+        user_id=user.id,
+        primary_color="#2563EB",
+        secondary_color="#1E40AF",
+        accent_color="#DBEAFE",
+        text_color="#1F2937",
+        background_color="#FFFFFF",
+        font_family="Inter",
+        layout_style="classic",
+        show_bank_details=True,
+        show_tax_id=True,
+        is_default=True,
+    )
+
+
 @router.post("/", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 async def create_document(
     document_data: DocumentCreate,
@@ -45,7 +78,6 @@ async def create_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Créer un nouveau devis ou facture."""
-    # Vérifier que le client appartient à l'utilisateur
     from app.services.clientService import ClientService
     client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
     if not client:
@@ -95,7 +127,6 @@ async def list_documents(
         limit=limit,
     )
 
-    # Enrichir avec les totaux
     result = []
     for doc in documents:
         totals = DocumentService.calculate_totals(doc.items)
@@ -241,3 +272,87 @@ async def delete_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+# ============================================================
+# 📄 ENDPOINTS PDF & PREVIEW
+# ============================================================
+
+@router.get("/{document_id}/pdf")
+async def get_document_pdf(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Générer et télécharger le PDF d'un document."""
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document introuvable",
+        )
+
+    # Récupérer le client
+    from app.services.clientService import ClientService
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client introuvable",
+        )
+
+    # Récupérer le template
+    template = await _get_document_template(db, document, current_user)
+
+    # Générer le PDF
+    pdf_buffer = pdf_renderer.render_pdf(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
+    )
+
+    filename = f"{document.number or 'document'}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename={filename}",
+        },
+    )
+
+
+@router.get("/{document_id}/preview", response_class=HTMLResponse)
+async def preview_document(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aperçu HTML d'un document (pour iframe dans le frontend)."""
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document introuvable",
+        )
+
+    # Récupérer le client
+    from app.services.clientService import ClientService
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client introuvable",
+        )
+
+    # Récupérer le template
+    template = await _get_document_template(db, document, current_user)
+
+    # Rendre le HTML
+    html_content = pdf_renderer.render_html(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
+    )
+    return HTMLResponse(content=html_content)
