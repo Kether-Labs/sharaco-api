@@ -19,8 +19,19 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # === Email (Resend) ===
+    # === Email ===
+    EMAIL_PROVIDER: str = "smtp"  # "smtp" ou "resend"
+
+    # SMTP (gratuit — Gmail, OVH, Infomaniak, etc.)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Sharaco"
+
+    # Resend (API)
     RESEND_API_KEY: str = ""
+    RESEND_FROM_DOMAIN: str = "onboarding@resend.dev"
 
     # === Redis (Celery) ===
     REDIS_URL: str = "redis://localhost:6379/0"

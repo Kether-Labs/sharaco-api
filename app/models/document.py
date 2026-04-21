@@ -1,106 +1,65 @@
-from pydantic import BaseModel, field_validator
+from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, List
-from uuid import UUID
-from datetime import datetime
-from app.models.document import DocumentType, DocumentStatus
+from uuid import UUID, uuid4
+from datetime import datetime, timezone
+from enum import Enum
 
 
-class DocumentItemCreate(BaseModel):
+class DocumentType(str, Enum):
+    DEVIS = "DEVIS"
+    FACTURE = "FACTURE"
+
+
+class DocumentStatus(str, Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    PAID = "PAID"
+    VIEWED = "VIEWED"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Document(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    type: DocumentType = Field(default=DocumentType.DEVIS)
+    status: DocumentStatus = Field(default=DocumentStatus.DRAFT)
+    number: Optional[str] = Field(default=None, index=True)
+
+    created_at: datetime = Field(default_factory=_utcnow)
+    due_date: Optional[datetime] = None
+    sent_at: Optional[datetime] = None  # Date d'envoi par email
+    viewed_at: Optional[datetime] = None  # Première visualisation
+
+    # === Relations ===
+    owner: "User" = Relationship(back_populates="documents")
+    user_id: UUID = Field(foreign_key="user.id")
+    client_id: UUID = Field(foreign_key="client.id")
+    client: "Client" = Relationship(back_populates="documents")
+
+    # === Template de design ===
+    template_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="documenttemplate.id",
+        description="Template de design appliqué au document"
+    )
+    template: Optional["DocumentTemplate"] = Relationship(back_populates="documents")
+
+    # === Lignes du document ===
+    items: List["DocumentItem"] = Relationship(back_populates="document")
+
+    # === Relances & Tracking ===
+    reminder_logs: List["ReminderLog"] = Relationship(back_populates="document")
+    views: List["DocumentView"] = Relationship(back_populates="document")
+
+
+class DocumentItem(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     description: str
     quantity: int = 1
     unit_price_cents: int
     tax_rate: int = 20
 
-    @field_validator("quantity")
-    @classmethod
-    def quantity_must_be_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("La quantité doit être positive")
-        return v
-
-    @field_validator("unit_price_cents")
-    @classmethod
-    def price_must_be_positive(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("Le prix unitaire ne peut pas être négatif")
-        return v
-
-    @field_validator("tax_rate")
-    @classmethod
-    def tax_rate_valid(cls, v: int) -> int:
-        if v < 0 or v > 100:
-            raise ValueError("Le taux de TVA doit être entre 0 et 100")
-        return v
-
-
-class DocumentItemRead(BaseModel):
-    id: UUID
-    description: str
-    quantity: int
-    unit_price_cents: int
-    tax_rate: int
-
-    model_config = {"from_attributes": True}
-
-
-class DocumentCreate(BaseModel):
-    type: DocumentType = DocumentType.DEVIS
-    client_id: UUID
-    template_id: Optional[UUID] = None
-    due_date: Optional[datetime] = None
-    items: List[DocumentItemCreate]
-
-    @field_validator("items")
-    @classmethod
-    def items_must_not_be_empty(cls, v: list) -> list:
-        if not v:
-            raise ValueError("Un document doit contenir au moins une ligne")
-        return v
-
-
-class DocumentRead(BaseModel):
-    id: UUID
-    type: DocumentType
-    status: DocumentStatus
-    number: Optional[str] = None
-    created_at: datetime
-    due_date: Optional[datetime] = None
-    sent_at: Optional[datetime] = None
-    viewed_at: Optional[datetime] = None
-    user_id: UUID
-    client_id: UUID
-    template_id: Optional[UUID] = None
-    items: List[DocumentItemRead] = []
-
-    # Totaux calculés
-    subtotal_cents: Optional[int] = None
-    tax_total_cents: Optional[int] = None
-    grand_total_cents: Optional[int] = None
-
-    model_config = {"from_attributes": True}
-
-
-class DocumentUpdate(BaseModel):
-    status: Optional[DocumentStatus] = None
-    due_date: Optional[datetime] = None
-    template_id: Optional[UUID] = None
-
-
-class DocumentStatusUpdate(BaseModel):
-    status: DocumentStatus
-
-
-class DocumentListRead(BaseModel):
-    id: UUID
-    type: DocumentType
-    status: DocumentStatus
-    number: Optional[str] = None
-    created_at: datetime
-    due_date: Optional[datetime] = None
-    sent_at: Optional[datetime] = None
-    viewed_at: Optional[datetime] = None
-    client_id: UUID
-    template_id: Optional[UUID] = None
-    grand_total_cents: Optional[int] = None
-
-    model_config = {"from_attributes": True}
+    document_id: UUID = Field(foreign_key="document.id")
+    document: Document = Relationship(back_populates="items")

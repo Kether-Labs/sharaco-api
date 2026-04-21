@@ -106,7 +106,8 @@ class DocumentService:
         # Règles de transition
         valid_transitions = {
             DocumentStatus.DRAFT: [DocumentStatus.SENT],
-            DocumentStatus.SENT: [DocumentStatus.PAID],
+            DocumentStatus.SENT: [DocumentStatus.VIEWED, DocumentStatus.PAID],
+            DocumentStatus.VIEWED: [DocumentStatus.PAID],
             DocumentStatus.PAID: [],  # Pas de retour possible
         }
 
