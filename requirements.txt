@@ -1,0 +1,34 @@
+# FastAPI & Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# ORM & Database
+sqlmodel==0.0.22
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+
+# Migrations
+alembic==1.14.1
+
+# Auth & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.20
+
+# Config & Validation
+pydantic-settings==2.7.1
+pydantic[email]==2.10.4
+python-dotenv==1.0.1
+
+# Email (pour les relances futures)
+resend==2.6.0
+
+# Celery (pour les tâches planifiées futures)
+celery==5.4.0
+redis==5.2.1
+
+# PDF generation (futur)
+weasyprint==63.0
+
+# Utils
+httpx==0.28.1

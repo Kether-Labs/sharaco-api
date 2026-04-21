@@ -3,27 +3,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Settings(BaseSettings):
-    
-    model_config = SettingsConfigDict(env_file='.env',extra="ignore")
-    
-    DB_USER : str
-    DB_PASSWORD : str
-    DB_HOST : str
-    DB_PORT : str
-    DB_NAME : str
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # === Database ===
+    DB_USER: str
+    DB_PASSWORD: str
+    DB_HOST: str
+    DB_PORT: str
+    DB_NAME: str
+
+    # === Auth ===
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # === Email (Resend) ===
+    RESEND_API_KEY: str = ""
+
+    # === Redis (Celery) ===
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # === Frontend ===
+    FRONTEND_URL: str = "http://localhost:3000"
+
     @property
-    
-    def DATABASE_URL(self) ->str :
+    def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-    #DATABASE_URL=
-    SECRET_KEY : str
-    ALGORITHM : str
-    ACCESS_TOKEN_EXPIRE_MINUTES : int
-    
+
+    @property
+    def SYNC_DATABASE_URL(self) -> str:
+        """URL synchrone pour Alembic et les scripts CLI."""
+        return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+
 settings = Settings()
