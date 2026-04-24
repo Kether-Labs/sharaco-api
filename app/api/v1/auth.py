@@ -56,3 +56,11 @@ async def read_current_user(
 ):
     """Retourne le profil de l'utilisateur connecté."""
     return current_user
+
+@router.post("/verify-email")
+async def verify_email(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Vérifie si l'email est déjà pris."""
+    return await AuthService.verifyIfEmailExist(db, email)

@@ -17,3 +17,12 @@ class AuthService:
             )
         token = create_access_token(subject=str(user.id))
         return {"access_token": token, "token_type": "bearer"}
+
+    async def verifyIfEmailExist(db: AsyncSession, email: str):
+        user = await UserService.get_by_email(db, email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email non existant",
+            )
+        return True

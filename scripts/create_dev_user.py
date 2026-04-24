@@ -19,7 +19,7 @@ async def create_main_user():
     )
 
     async with async_session() as db:
-        email = "admin@sharaco.com"
+        email = "bramslevel129@gmail.com"
         password = "password123"
 
         # 1. Vérifier si l'utilisateur existe déjà pour éviter les doublons
