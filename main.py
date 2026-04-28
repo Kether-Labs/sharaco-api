@@ -6,12 +6,17 @@ from app.api.v1.client import router as client_router
 from app.api.v1.template import router as template_router
 from app.api.v1.document import router as document_router
 from app.api.v1.reminder import router as reminder_router
+from app.api.v1.dashboard import router as dashboard_router
 
 app = FastAPI(title="Sharaco API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "http://localhost:3000",      # fallback dev
+        "http://127.0.0.1:3000",      # fallback dev
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +28,7 @@ app.include_router(client_router, prefix="/api/v1/clients", tags=["clients"])
 app.include_router(template_router, prefix="/api/v1/templates", tags=["templates"])
 app.include_router(document_router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(reminder_router, prefix="/api/v1/reminders", tags=["reminders"])
+app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 
 
 @app.get("/")

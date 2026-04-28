@@ -62,8 +62,8 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Statistiques globales du dashboard."""
-    now = datetime.now(timezone.utc)
-    start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive pour matcher la colonne TIMESTAMP WITHOUT TZ
+    start_of_month = datetime(now.year, now.month, 1)
 
     # --- Compteurs ---
     total_clients = (await db.execute(
@@ -256,7 +256,7 @@ async def get_monthly_revenue(
     db: AsyncSession = Depends(get_db),
 ):
     """Chiffre d'affaires par mois (12 derniers mois) pour les graphs."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive pour matcher la colonne TIMESTAMP WITHOUT TZ
     twelve_months_ago = now - timedelta(days=365)
 
     # Récupérer tous les documents payés des 12 derniers mois
