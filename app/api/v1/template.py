@@ -1,16 +1,80 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
+from uuid import UUID, uuid4
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
+from app.models.document_template import DocumentTemplate
 from app.services.templateService import TemplateService
 from app.services.pdfRenderer import pdf_renderer
 from app.schemas.document_template import DocumentTemplateCreate, DocumentTemplateRead, DocumentTemplateUpdate
 
 router = APIRouter(tags=["templates"])
 
+
+# ============================================================
+# LAYOUTS SYSTÈME (fichiers HTML du serveur)
+# ⚠️ DOIVENT ÊTRE AVANT /{template_id} sinon FastAPI matche "layouts" comme UUID
+# ============================================================
+
+@router.get("/layouts")
+async def get_available_layouts(
+    current_user: User = Depends(get_current_user),
+):
+    """Liste les layouts HTML disponibles sur le serveur."""
+    return [
+        {
+            "id": "classic",
+            "name": "Classique",
+            "description": "Layout traditionnel avec en-tête coloré et tableau structuré",
+            "preview_url": "/api/v1/templates/layouts/classic/preview",
+        },
+        {
+            "id": "modern",
+            "name": "Moderne",
+            "description": "Design épuré avec accents colorés et typographie contemporaine",
+            "preview_url": "/api/v1/templates/layouts/modern/preview",
+        },
+        {
+            "id": "minimal",
+            "name": "Minimaliste",
+            "description": "Style sobre et économe, idéal pour les prestations simples",
+            "preview_url": "/api/v1/templates/layouts/minimal/preview",
+        },
+    ]
+
+
+@router.get("/layouts/{layout_id}/preview", response_class=HTMLResponse)
+async def preview_layout(
+    layout_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Aperçu HTML d'un layout avec les couleurs par défaut (sans template en DB)."""
+    if layout_id not in pdf_renderer.LAYOUT_MAP:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Layout '{layout_id}' introuvable",
+        )
+
+    # Créer un template temporaire avec les valeurs par défaut
+    temp_template = DocumentTemplate(
+        id=uuid4(),
+        name="Aperçu",
+        user_id=current_user.id,
+        layout_style=layout_id,
+    )
+
+    html_content = pdf_renderer.render_preview_html(
+        template=temp_template,
+        user=current_user,
+    )
+    return HTMLResponse(content=html_content)
+
+
+# ============================================================
+# TEMPLATES UTILISATEUR (enregistrés en DB)
+# ============================================================
 
 @router.post("/", response_model=DocumentTemplateRead, status_code=status.HTTP_201_CREATED)
 async def create_template(
