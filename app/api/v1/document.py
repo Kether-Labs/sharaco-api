@@ -16,6 +16,7 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentStatusUpdate,
     DocumentListRead,
+    DocumentPreviewRequest,
 )
 
 router = APIRouter(tags=["documents"])
@@ -70,6 +71,55 @@ async def _get_document_template(db: AsyncSession, document, user: User):
         is_default=True,
     )
 
+
+@router.post("/preview", response_class=HTMLResponse)
+async def preview_document_live(
+    preview_data: DocumentPreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aperçu HTML en temps réel pour l'éditeur de devis/factures.
+    Ne sauvegarde RIEN en DB — rend juste le HTML avec les données du formulaire.
+    """
+    # Convertir type string → DocumentType enum
+    try:
+        doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
+    except ValueError:
+        doc_type = DocumentType.DEVIS
+
+    # Convertir template_id string → UUID (ou None)
+    template_uuid = None
+    if preview_data.template_id:
+        try:
+            template_uuid = UUID(preview_data.template_id)
+        except ValueError:
+            template_uuid = None  # ID invalide → on ignore, fallback template
+
+    html_content = await DocumentService.render_preview(
+        db=db,
+        user=current_user,
+        type=doc_type,
+        client_name=preview_data.client_name,
+        client_email=preview_data.client_email,
+        client_address=preview_data.client_address,
+        client_phone=preview_data.client_phone,
+        items=[item.model_dump() for item in preview_data.items],
+        template_id=template_uuid,
+        layout_style=preview_data.layout_style,
+        primary_color=preview_data.primary_color,
+        secondary_color=preview_data.secondary_color,
+        accent_color=preview_data.accent_color,
+        text_color=preview_data.text_color,
+        background_color=preview_data.background_color,
+        font_family=preview_data.font_family,
+        header_text=preview_data.header_text,
+        footer_text=preview_data.footer_text,
+        show_bank_details=preview_data.show_bank_details,
+        show_tax_id=preview_data.show_tax_id,
+        reference=preview_data.reference,
+    )
+    return HTMLResponse(content=html_content)
 
 @router.post("/", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 async def create_document(
@@ -142,6 +192,9 @@ async def list_documents(
             "grand_total_cents": totals["grand_total_cents"],
         })
     return result
+
+
+
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
@@ -277,6 +330,10 @@ async def delete_document(
 # ============================================================
 # 📄 ENDPOINTS PDF & PREVIEW
 # ============================================================
+
+
+
+
 
 @router.get("/{document_id}/pdf")
 async def get_document_pdf(

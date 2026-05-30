@@ -2,11 +2,11 @@ import os
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 from io import BytesIO
-from app.models.document import Document
+from app.models.document import Document, DocumentItem
 from app.models.document_template import DocumentTemplate
 from app.models.client import Client
 from app.models.user import User
-from app.services.documentService import DocumentService
+
 
 
 class PDFRenderer:
@@ -34,6 +34,25 @@ class PDFRenderer:
         """Retourne le fichier HTML correspondant au layout."""
         return self.LAYOUT_MAP.get(layout_style, "classic.html")
 
+    @staticmethod
+    def _calculate_totals(items: list[DocumentItem]) -> dict:
+        """Calcule les totaux d'un document à partir de ses lignes."""
+        subtotal_cents = 0
+        tax_total_cents = 0
+
+        for item in items:
+            line_subtotal = item.quantity * item.unit_price_cents
+            line_tax = int(line_subtotal * item.tax_rate / 100)
+            subtotal_cents += line_subtotal
+            tax_total_cents += line_tax
+
+        grand_total_cents = subtotal_cents + tax_total_cents
+
+        return {
+            "subtotal_cents": subtotal_cents,
+            "tax_total_cents": tax_total_cents,
+            "grand_total_cents": grand_total_cents,
+        }
     def _build_context(
         self,
         document: Document,
@@ -43,7 +62,7 @@ class PDFRenderer:
         currency: str = None,
     ) -> dict:
         """Construit le contexte de variables pour le template Jinja2."""
-        totals = DocumentService.calculate_totals(document.items)
+        totals = self._calculate_totals(document.items)
 
         return {
             "document": document,

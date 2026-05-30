@@ -65,12 +65,14 @@ class DocumentRead(BaseModel):
     number: Optional[str] = None
     created_at: datetime
     due_date: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    viewed_at: Optional[datetime] = None
     user_id: UUID
     client_id: UUID
     template_id: Optional[UUID] = None
     items: List[DocumentItemRead] = []
 
-    # Totaux calculés (pas en DB, calculés à la volée)
+    # Totaux calculés
     subtotal_cents: Optional[int] = None
     tax_total_cents: Optional[int] = None
     grand_total_cents: Optional[int] = None
@@ -88,14 +90,54 @@ class DocumentStatusUpdate(BaseModel):
     status: DocumentStatus
 
 
+class DocumentPreviewItem(BaseModel):
+    """Ligne d'article pour l'aperçu en temps réel."""
+    description: str = ""
+    quantity: int = 1
+    unit_price_cents: int = 0
+    tax_rate: int = 20
+
+
+class DocumentPreviewRequest(BaseModel):
+    """Données pour l'aperçu en temps réel (pas de sauvegarde en DB).
+    Validation permissive : l'utilisateur est en train d'éditer,
+    les champs peuvent être vides ou incomplets.
+    """
+    type: Optional[str] = "DEVIS"
+    # Client
+    client_name: str = "Client Exemple"
+    client_email: str = ""
+    client_address: str = ""
+    client_phone: str = ""
+    # Articles
+    items: List[DocumentPreviewItem] = []
+    # Template
+    template_id: Optional[str] = None
+    layout_style: str = "classic"
+    primary_color: str = "#2563EB"
+    secondary_color: str = "#1E40AF"
+    accent_color: str = "#DBEAFE"
+    text_color: str = "#1F2937"
+    background_color: str = "#FFFFFF"
+    font_family: str = "Inter"
+    header_text: Optional[str] = None
+    footer_text: Optional[str] = None
+    show_bank_details: bool = True
+    show_tax_id: bool = True
+    # Méta
+    notes: Optional[str] = None
+    reference: Optional[str] = None
+
+
 class DocumentListRead(BaseModel):
-    """Version allégée pour les listes (sans items détaillés)."""
     id: UUID
     type: DocumentType
     status: DocumentStatus
     number: Optional[str] = None
     created_at: datetime
     due_date: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    viewed_at: Optional[datetime] = None
     client_id: UUID
     template_id: Optional[UUID] = None
     grand_total_cents: Optional[int] = None

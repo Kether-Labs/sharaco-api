@@ -5,8 +5,12 @@ from app.models.document_template import DocumentTemplate
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timezone
+from app.services.templateService import TemplateService
+from uuid import UUID, uuid4
+from app.models.client import Client
+from app.models.user import User
 
-
+from app.services.pdfRenderer import pdf_renderer
 class DocumentService:
     @staticmethod
     async def create_document(
@@ -200,6 +204,106 @@ class DocumentService:
         }
 
     @staticmethod
+    async def render_preview(
+        db: AsyncSession,
+        user: User,
+        type: DocumentType = DocumentType.DEVIS,
+        client_name: str = "Client Exemple",
+        client_email: str = "",
+        client_address: str = "",
+        client_phone: str = "",
+        items: list[dict] = None,
+        template_id: Optional[UUID] = None,
+        layout_style: str = "classic",
+        primary_color: str = "#2563EB",
+        secondary_color: str = "#1E40AF",
+        accent_color: str = "#DBEAFE",
+        text_color: str = "#1F2937",
+        background_color: str = "#FFFFFF",
+        font_family: str = "Inter",
+        header_text: Optional[str] = None,
+        footer_text: Optional[str] = None,
+        show_bank_details: bool = True,
+        show_tax_id: bool = True,
+        reference: Optional[str] = None,
+    ) -> str:
+        """
+        Génère un aperçu HTML en temps réel pour l'éditeur.
+        Ne sauvegarde RIEN en DB — crée des objets temporaires en mémoire.
+        Retourne le HTML rendu par Jinja2.
+        """
+        items = items or [{"description": "Exemple", "quantity": 1, "unit_price_cents": 0, "tax_rate": 20}]
+
+        # --- Template ---
+        if template_id:
+            template = await TemplateService.get_by_id(db, template_id, user.id)
+            if not template:
+                template = DocumentService._build_fallback_template(user.id, layout_style)
+        else:
+            # Template temporaire avec les couleurs du formulaire
+            template = DocumentTemplate(
+                id=uuid4(),
+                name="Aperçu",
+                user_id=user.id,
+                layout_style=layout_style,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                accent_color=accent_color,
+                text_color=text_color,
+                background_color=background_color,
+                font_family=font_family,
+                header_text=header_text,
+                footer_text=footer_text,
+                show_bank_details=show_bank_details,
+                show_tax_id=show_tax_id,
+            )
+
+        # --- Document temporaire ---
+        doc_id = uuid4()
+        fake_doc = Document(
+            id=doc_id,
+            type=type,
+            status=DocumentStatus.DRAFT,
+            number=reference or "DEV-2026-001",
+            created_at=datetime.now(timezone.utc),
+            due_date=None,
+            user_id=user.id,
+            client_id=uuid4(),
+        )
+
+        # Items réels du formulaire
+        fake_doc.items = [
+            DocumentItem(
+                id=uuid4(),
+                description=item.get("description", ""),
+                quantity=item.get("quantity", 1),
+                unit_price_cents=item.get("unit_price_cents", 0),
+                tax_rate=item.get("tax_rate", 20),
+                document_id=doc_id,
+            )
+            for item in items
+        ]
+
+        # --- Client temporaire ---
+        fake_client = Client(
+            id=uuid4(),
+            name=client_name,
+            email=client_email,
+            address=client_address,
+            phone=client_phone,
+            user_id=user.id,
+        )
+
+        # --- Rendu HTML ---
+        html_content = pdf_renderer.render_html(
+            document=fake_doc,
+            template=template,
+            user=user,
+            client=fake_client,
+        )
+        return html_content
+
+    @staticmethod
     async def _generate_number(db: AsyncSession, type: DocumentType, user_id: UUID) -> str:
         """Génère un numéro de document automatique (DEV-2026-001, FACT-2026-001)."""
         prefix = "DEV" if type == DocumentType.DEVIS else "FACT"
@@ -217,3 +321,21 @@ class DocumentService:
         count = result.scalar() or 0
 
         return f"{prefix}-{year}-{count + 1:03d}"
+    
+    @staticmethod
+    def _build_fallback_template(user_id: UUID, layout_style: str = "classic") -> DocumentTemplate:
+        """Construit un template fallback avec les valeurs par défaut."""
+        return DocumentTemplate(
+            id=uuid4(),
+            name="Par défaut",
+            user_id=user_id,
+            layout_style=layout_style,
+            primary_color="#2563EB",
+            secondary_color="#1E40AF",
+            accent_color="#DBEAFE",
+            text_color="#1F2937",
+            background_color="#FFFFFF",
+            font_family="Inter",
+            show_bank_details=True,
+            show_tax_id=True,
+        )
