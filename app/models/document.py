@@ -31,6 +31,7 @@ class Document(SQLModel, table=True):
     due_date: Optional[datetime] = None
     sent_at: Optional[datetime] = None  # Date d'envoi par email
     viewed_at: Optional[datetime] = None  # Première visualisation
+    notes: Optional[str] = Field(default=None, description="Notes/conditions visibles sur le document")
 
     # === Relations ===
     owner: "User" = Relationship(back_populates="documents")

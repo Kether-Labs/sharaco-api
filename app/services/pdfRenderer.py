@@ -96,10 +96,14 @@ class PDFRenderer:
         client: Client,
         currency: str = None,
     ) -> BytesIO:
-        """Rend le PDF binaire (pour téléchargement)."""
+        """Rend le PDF binaire (pour téléchargement). Format A4 forcé."""
         html_string = self.render_html(document, template, user, client, currency)
         pdf_buffer = BytesIO()
-        HTML(string=html_string).write_pdf(pdf_buffer)
+        HTML(string=html_string).write_pdf(
+            pdf_buffer,
+            # Forcer le format A4 au cas où @page ne serait pas respecté
+            presentational_hints=True,
+        )
         pdf_buffer.seek(0)
         return pdf_buffer
 

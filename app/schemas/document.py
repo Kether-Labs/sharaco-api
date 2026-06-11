@@ -44,11 +44,14 @@ class DocumentItemRead(BaseModel):
 
 
 class DocumentCreate(BaseModel):
+    """Création d'un document — l'ID peut être fourni par le frontend."""
+    id: Optional[UUID] = None  # UUID fourni par le frontend, auto-généré si absent
     type: DocumentType = DocumentType.DEVIS
     client_id: UUID
     template_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
     items: List[DocumentItemCreate]
+    notes: Optional[str] = None
 
     @field_validator("items")
     @classmethod
@@ -71,6 +74,7 @@ class DocumentRead(BaseModel):
     client_id: UUID
     template_id: Optional[UUID] = None
     items: List[DocumentItemRead] = []
+    notes: Optional[str] = None
 
     # Totaux calculés
     subtotal_cents: Optional[int] = None
@@ -81,9 +85,12 @@ class DocumentRead(BaseModel):
 
 
 class DocumentUpdate(BaseModel):
-    status: Optional[DocumentStatus] = None
-    due_date: Optional[datetime] = None
+    """Mise à jour complète d'un document (items, client, template...)."""
+    client_id: Optional[UUID] = None
     template_id: Optional[UUID] = None
+    due_date: Optional[datetime] = None
+    items: Optional[List[DocumentItemCreate]] = None
+    notes: Optional[str] = None
 
 
 class DocumentStatusUpdate(BaseModel):
