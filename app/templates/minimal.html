@@ -1,33 +1,15 @@
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ document.type.value }} - {{ document.number }}</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
+    <title>{{ document.type.value or 'DEVIS' }} - {{ document.number or 'N/A' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --primary-color: {
-                    {
-                    template.primary_color or '#000000'
-                }
-            }
-
-            ;
-            --text-main: #111111;
-            --text-muted: #71717a;
-            --border-light: #e4e4e7;
-            --bg-page: #ffffff;
-            --bg-app: #fafafa;
-            --invoice-width: 800px;
-        }
-
-        *,
-        *::before,
-        *::after {
+        /* ═══════════════════════════════════════════════════════════════
+           RESET & BASE
+        ═══════════════════════════════════════════════════════════════ */
+        * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -35,59 +17,103 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            color: var(--text-main);
+            color: #111111;
             line-height: 1.6;
-            background-color: var(--bg-app);
-            padding: 40px 0;
+            background-color: #fafafa;
             -webkit-print-color-adjust: exact;
-            display: flex;
-            justify-content: center;
+            print-color-adjust: exact;
         }
 
-        /* SCALING WRAPPER */
-        .invoice-wrapper {
-            width: var(--invoice-width);
-            transform-origin: top center;
-            transition: transform 0.2s ease;
-        }
-
-        .invoice-container {
-            width: 100%;
-            background: var(--bg-page);
-            padding: 80px 60px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        /* ═══════════════════════════════════════════════════════════════
+           PAGE CONTAINER
+        ═══════════════════════════════════════════════════════════════ */
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: white;
+            padding: 60px;
             position: relative;
-            min-height: 1100px;
         }
 
-        /* Minimal Header */
+        @media screen {
+            body {
+                padding: 20px;
+                display: flex;
+                justify-content: center;
+            }
+            .page {
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+        }
+
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            body {
+                background: white;
+                padding: 0;
+                display: block;
+            }
+            .page {
+                box-shadow: none;
+                padding: 40px;
+                min-height: auto;
+                height: auto !important;
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           HEADER
+        ══════════════════════════════════════════════════════════════ */
         .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
             margin-bottom: 80px;
         }
 
-        .brand-box img {
-            max-height: 35px;
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .header-table td {
+            vertical-align: top;
+            padding: 0;
+        }
+
+        .header-left {
+            width: 60%;
+        }
+
+        .header-right {
+            width: 40%;
+            text-align: right;
+        }
+
+        .logo-container {
             margin-bottom: 15px;
+        }
+
+        .logo-container img {
+            max-height: 35px;
+            max-width: 200px;
+            object-fit: contain;
         }
 
         .company-name {
             font-size: 16px;
             font-weight: 600;
             letter-spacing: -0.02em;
+            color: #111111;
+            margin-bottom: 4px;
         }
 
         .company-details {
             font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 4px;
+            color: #71717a;
             max-width: 250px;
-        }
-
-        .doc-info {
-            text-align: right;
+            line-height: 1.6;
         }
 
         .doc-type {
@@ -96,36 +122,51 @@
             letter-spacing: -0.04em;
             text-transform: lowercase;
             margin-bottom: 5px;
+            color: #111111;
         }
 
         .doc-number {
-            font-family: 'JetBrains+Mono', monospace;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
-            color: var(--text-muted);
+            color: #71717a;
         }
 
-        /* Meta Strip */
+        /* ══════════════════════════════════════════════════════════════
+           META GRID
+        ══════════════════════════════════════════════════════════════ */
         .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
             margin-bottom: 60px;
             padding-bottom: 20px;
-            border-bottom: 1px solid var(--border-light);
+            border-bottom: 1px solid #e4e4e7;
         }
 
-        .meta-item .label {
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .meta-table td {
+            vertical-align: top;
+            padding: 0 10px 0 0;
+        }
+
+        .meta-table td:last-child {
+            padding-right: 0;
+        }
+
+        .meta-label {
             display: block;
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--text-muted);
+            color: #71717a;
             margin-bottom: 4px;
         }
 
-        .meta-item .value {
+        .meta-value {
             font-size: 13px;
             font-weight: 500;
+            color: #111111;
         }
 
         .status-text {
@@ -146,19 +187,36 @@
             color: #059669;
         }
 
-        /* Parties */
+        .status-overdue {
+            color: #dc2626;
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           PARTIES
+        ══════════════════════════════════════════════════════════════ */
         .parties {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 60px;
             margin-bottom: 60px;
+        }
+
+        .parties-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .parties-table td {
+            vertical-align: top;
+            padding: 0 30px 0 0;
+        }
+
+        .parties-table td:last-child {
+            padding-right: 0;
         }
 
         .party-label {
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--text-muted);
+            color: #71717a;
             margin-bottom: 12px;
         }
 
@@ -166,19 +224,29 @@
             font-size: 15px;
             font-weight: 600;
             margin-bottom: 6px;
+            color: #111111;
         }
 
         .party-info {
             font-size: 13px;
-            color: var(--text-muted);
+            color: #71717a;
             line-height: 1.6;
         }
 
-        /* Table */
+        /* ══════════════════════════════════════════════════════════════
+           ITEMS TABLE
+        ══════════════════════════════════════════════════════════════ */
+        .items-section {
+            margin-bottom: 40px;
+        }
+
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 40px;
+        }
+
+        .items-table thead tr {
+            border-bottom: 1px solid #111111;
         }
 
         .items-table th {
@@ -187,14 +255,19 @@
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--text-main);
+            color: #71717a;
+            font-weight: 500;
         }
 
         .items-table td {
             padding: 20px 0;
             font-size: 14px;
-            border-bottom: 1px solid var(--border-light);
+            border-bottom: 1px solid #e4e4e7;
+            vertical-align: top;
+        }
+
+        .items-table tbody tr:last-child td {
+            border-bottom: none;
         }
 
         .text-right {
@@ -202,238 +275,360 @@
         }
 
         .mono {
-            font-family: 'JetBrains+Mono', monospace;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 13px;
         }
 
-        /* Totals */
+        .col-desc { width: 55%; }
+        .col-qty { width: 10%; }
+        .col-price { width: 15%; }
+        .col-total { width: 20%; }
+
+        /* ══════════════════════════════════════════════════════════════
+           SUMMARY
+        ══════════════════════════════════════════════════════════════ */
         .summary {
-            display: flex;
-            justify-content: flex-end;
+            margin-bottom: 60px;
         }
 
-        .totals-table {
-            width: 250px;
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .summary-table td {
+            vertical-align: top;
+            padding: 0;
+        }
+
+        .summary-spacer {
+            width: 70%;
+        }
+
+        .summary-totals {
+            width: 30%;
+        }
+
+        .totals-box {
+            width: 100%;
+            max-width: 250px;
+            margin-left: auto;
         }
 
         .total-row {
-            display: flex;
-            justify-content: space-between;
+            display: table;
+            width: 100%;
             padding: 10px 0;
             font-size: 13px;
+        }
+
+        .total-row:last-child {
+            border-bottom: none;
         }
 
         .total-row.grand {
             margin-top: 10px;
             padding-top: 20px;
-            border-top: 1px solid var(--text-main);
+            border-top: 1px solid #111111;
             font-size: 18px;
             font-weight: 600;
         }
 
-        /* Footer */
+        .total-label-cell {
+            display: table-cell;
+            color: #71717a;
+        }
+
+        .total-value-cell {
+            display: table-cell;
+            text-align: right;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .grand .total-label-cell,
+        .grand .total-value-cell {
+            font-size: 18px;
+            font-weight: 600;
+            color: #111111;
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           FOOTER
+        ══════════════════════════════════════════════════════════════ */
         .footer {
-            position: absolute;
-            bottom: 80px;
-            left: 60px;
-            right: 60px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
+            margin-top: 60px;
             padding-top: 40px;
-            border-top: 1px solid var(--border-light);
+            border-top: 1px solid #e4e4e7;
+        }
+
+        .footer-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .footer-table td {
+            vertical-align: top;
+            padding: 0 20px 0 0;
+        }
+
+        .footer-table td:last-child {
+            padding-right: 0;
         }
 
         .footer-note {
             max-width: 350px;
             font-size: 11px;
-            color: var(--text-muted);
+            color: #71717a;
+            line-height: 1.6;
         }
 
         .bank-info {
             text-align: right;
             font-size: 11px;
-            color: var(--text-muted);
+            color: #71717a;
+            line-height: 1.6;
         }
 
-        /* SCALING SCRIPT */
-        @media screen and (max-width: 800px) {
-            body {
-                padding: 10px 0;
-                display: block;
-                overflow-x: hidden;
-            }
+        .bank-info strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #111111;
+        }
 
-            .invoice-wrapper {
-                width: 800px;
-                margin-left: 50%;
-                transform: translateX(-50%) scale(calc(100vw / 820));
-            }
+        .bank-details-box {
+            font-family: 'JetBrains Mono', monospace;
+            background: #fafafa;
+            padding: 10px;
+            border-radius: 4px;
+            color: #3f3f46;
+            font-size: 10px;
+            word-break: break-all;
+            border: 1px solid #e4e4e7;
+            margin-top: 6px;
+            text-align: left;
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           MULTI-PAGE SUPPORT
+        ══════════════════════════════════════════════════════════════ */
+        .page {
+            height: auto !important;
+            overflow: visible !important;
+        }
+
+        .header,
+        .meta-grid,
+        .parties,
+        .summary,
+        .footer {
+            page-break-inside: avoid;
+        }
+
+        .items-table tr {
+            page-break-inside: auto;
+        }
+
+        .items-table tr td {
+            page-break-inside: avoid;
         }
 
         @media print {
-            body {
-                background: none;
-                padding: 0;
-                display: block;
-            }
-
-            .invoice-wrapper {
-                width: 100%;
-                transform: none !important;
-                margin: 0;
-            }
-
-            .invoice-container {
-                box-shadow: none;
-                padding: 40px;
-                min-height: auto;
-            }
-
-            .footer {
-                position: static;
-                margin-top: 100px;
+            .page {
+                height: auto !important;
+                min-height: auto !important;
             }
         }
     </style>
 </head>
-
 <body>
-    <div class="invoice-wrapper" id="invoiceWrapper">
-        <div class="invoice-container">
-            <!-- Header -->
-            <header class="header">
-                <div class="brand-box">
-                    {% if user.logo_url %}
-                    <img src="{{ user.logo_url }}" alt="Logo">
-                    {% else %}
-                    <div class="company-name">{{ user.company_name or 'ENTREPRISE' }}</div>
-                    {% endif %}
-                    <div class="company-details">{{ user.address or '' }}</div>
-                </div>
-                <div class="doc-info">
-                    <h1 class="doc-type">{{ document.type.value }}</h1>
-                    <div class="doc-number">REF_{{ document.number }}</div>
-                </div>
-            </header>
 
-            <!-- Meta -->
-            <div class="meta-grid">
-                <div class="meta-item">
-                    <span class="label">Date</span>
-                    <span class="value">{{ document.created_at.strftime('%d.%m.%Y') }}</span>
-                </div>
-                {% if document.due_date %}
-                <div class="meta-item">
-                    <span class="label">Échéance</span>
-                    <span class="value">{{ document.due_date.strftime('%d.%m.%Y') }}</span>
-                </div>
-                {% endif %}
-                {% if template.show_tax_id and user.tax_id %}
-                <div class="meta-item">
-                    <span class="label">Identifiant</span>
-                    <span class="value">{{ user.tax_id }}</span>
-                </div>
-                {% endif %}
-                <div class="meta-item">
-                    <span class="label">Statut</span>
-                    <span class="value status-text status-{{ document.status.value.lower() }}">{{ document.status.value
-                        }}</span>
-                </div>
-            </div>
-
-            <!-- Parties -->
-            <section class="parties">
-                <div class="party-box">
-                    <div class="party-label">Émetteur</div>
-                    <div class="party-name">{{ user.company_name or user.email }}</div>
-                    <div class="party-info">
-                        {{ user.address or '' }}
-                        {% if template.show_tax_id and user.tax_id %}<br>SIRET : {{ user.tax_id }}{% endif %}
+<div class="page">
+    <!-- ══════════════════════════════════════════════════════════════
+         HEADER
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="header">
+        <table class="header-table">
+            <tr>
+                <td class="header-left">
+                    <div class="logo-container">
+                        {% if user.logo_url %}
+                            <img src="{{ user.logo_url }}" alt="Logo">
+                        {% else %}
+                            <div class="company-name">
+                                {{ user.company_name or 'ENTREPRISE' }}
+                            </div>
+                        {% endif %}
                     </div>
-                </div>
-                <div class="party-box">
-                    <div class="party-label">Client</div>
-                    <div class="party-name">{{ client.name }}</div>
-                    <div class="party-info">
-                        {% if client.email %}{{ client.email }}<br>{% endif %}
-                        {{ client.address or '' }}
-                        {% if client.phone %}<br>Tél : {{ client.phone }}{% endif %}
+                    <div class="company-details">
+                        {% if user.address %}
+                            {{ user.address }}
+                        {% endif %}
                     </div>
-                </div>
-            </section>
-
-            <!-- Table -->
-            <table class="items-table">
-                <thead>
-                    <tr>
-                        <th style="width: 55%;">Description</th>
-                        <th style="width: 10%;" class="text-right">Qté</th>
-                        <th style="width: 15%;" class="text-right">Prix Unit.</th>
-                        <th style="width: 20%;" class="text-right">Total HT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <td>{{ item.description }}</td>
-                        <td class="text-right">{{ item.quantity }}</td>
-                        <td class="text-right mono">{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
-                        <td class="text-right mono">{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{
-                            currency }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            <!-- Summary -->
-            <div class="summary">
-                <div class="totals-table">
-                    <div class="total-row">
-                        <span class="label">Sous-total HT</span>
-                        <span class="mono">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</span>
-                    </div>
-                    <div class="total-row">
-                        <span class="label">TVA</span>
-                        <span class="mono">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</span>
-                    </div>
-                    <div class="total-row grand">
-                        <span>TOTAL TTC</span>
-                        <span class="mono">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Footer -->
-            <footer class="footer">
-                <div class="footer-note">
-                    {% if template.footer_text %}{{ template.footer_text }}{% else %}Merci pour votre confiance. Ce
-                    document est une pièce comptable officielle.{% endif %}
-                </div>
-                {% if template.show_bank_details and user.payment_info %}
-                <div class="bank-info">
-                    <strong>Coordonnées bancaires</strong><br>
-                    {{ user.payment_info }}
-                </div>
-                {% endif %}
-            </footer>
-        </div>
+                </td>
+                <td class="header-right">
+                    <h1 class="doc-type">{{ document.type.value or 'devis' }}</h1>
+                    <div class="doc-number">REF_{{ document.number or 'N/A' }}</div>
+                </td>
+            </tr>
+        </table>
     </div>
 
-    <script>
-        function adjustScale() {
-            const wrapper = document.getElementById('invoiceWrapper');
-            const windowWidth = window.innerWidth;
-            if (windowWidth < 800) {
-                const scale = windowWidth / 820;
-                wrapper.style.transform = `translateX(-50%) scale(${scale})`;
-            } else {
-                wrapper.style.transform = 'none';
-            }
-        }
-        window.addEventListener('resize', adjustScale);
-        adjustScale();
-    </script>
-</body>
+    <!-- ══════════════════════════════════════════════════════════════
+         META GRID
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="meta-grid">
+        <table class="meta-table">
+            <tr>
+                <td style="width: 25%;">
+                    <span class="meta-label">Date</span>
+                    <span class="meta-value">
+                        {{ document.created_at.strftime('%d.%m.%Y') if document.created_at else '-' }}
+                    </span>
+                </td>
+                <td style="width: 25%;">
+                    {% if document.due_date %}
+                        <span class="meta-label">Échéance</span>
+                        <span class="meta-value">
+                            {{ document.due_date.strftime('%d.%m.%Y') }}
+                        </span>
+                    {% endif %}
+                </td>
+                <td style="width: 25%;">
+                    {% if template.show_tax_id and user.tax_id %}
+                        <span class="meta-label">Identifiant</span>
+                        <span class="meta-value">{{ user.tax_id }}</span>
+                    {% endif %}
+                </td>
+                <td style="width: 25%;">
+                    <span class="meta-label">Statut</span>
+                    <span class="meta-value status-text status-{{ document.status.value.lower() if document.status else 'draft' }}">
+                        {{ document.status.value if document.status else 'Brouillon' }}
+                    </span>
+                </td>
+            </tr>
+        </table>
+    </div>
 
+    <!-- ══════════════════════════════════════════════════════════════
+         PARTIES
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="parties">
+        <table class="parties-table">
+            <tr>
+                <td style="width: 50%;">
+                    <div class="party-label">ÉMETTEUR</div>
+                    <div class="party-name">{{ user.company_name or user.email or 'Entreprise' }}</div>
+                    <div class="party-info">
+                        {% if user.address %}
+                            {{ user.address | replace('\n', '<br>') | safe }}<br>
+                        {% endif %}
+                        {% if template.show_tax_id and user.tax_id %}
+                            SIRET : {{ user.tax_id }}
+                        {% endif %}
+                    </div>
+                </td>
+                <td style="width: 50%;">
+                    <div class="party-label">CLIENT</div>
+                    <div class="party-name">{{ client.name or 'Client' }}</div>
+                    <div class="party-info">
+                        {% if client.email %}{{ client.email }}<br>{% endif %}
+                        {% if client.address %}
+                            {{ client.address | replace('\n', '<br>') | safe }}<br>
+                        {% endif %}
+                        {% if client.phone %}
+                            Tél : {{ client.phone }}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ITEMS TABLE
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="items-section">
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th class="col-desc">DESCRIPTION</th>
+                    <th class="col-qty text-right">QTÉ</th>
+                    <th class="col-price text-right">PRIX UNIT.</th>
+                    <th class="col-total text-right">TOTAL HT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) / 100 %}
+                <tr>
+                    <td class="col-desc">{{ item.description or 'Article sans description' }}</td>
+                    <td class="col-qty text-right">{{ item.quantity or 1 }}</td>
+                    <td class="col-price text-right mono">{{ "%.2f"|format((item.unit_price_cents or 0) / 100) }} {{ currency }}</td>
+                    <td class="col-total text-right mono">{{ "%.2f"|format(ht) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         SUMMARY
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="summary">
+        <table class="summary-table">
+            <tr>
+                <td class="summary-spacer"></td>
+                <td class="summary-totals">
+                    <div class="totals-box">
+                        <div class="total-row">
+                            <div class="total-label-cell">Sous-total HT</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</div>
+                        </div>
+                        <div class="total-row">
+                            <div class="total-label-cell">TVA</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</div>
+                        </div>
+                        <div class="total-row grand">
+                            <div class="total-label-cell">TOTAL TTC</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         FOOTER
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="footer">
+        <table class="footer-table">
+            <tr>
+                <td style="width: 50%;">
+                    <div class="footer-note">
+                        {% if template.footer_text %}
+                            {{ template.footer_text }}
+                        {% else %}
+                            Merci pour votre confiance. Ce document est une pièce comptable officielle.
+                        {% endif %}
+                    </div>
+                </td>
+                <td style="width: 50%;">
+                    {% if template.show_bank_details and user.payment_info %}
+                        <div class="bank-info">
+                            <strong>Coordonnées bancaires</strong>
+                            <div class="bank-details-box">
+                                {{ user.payment_info | replace('\n', '<br>') | safe }}
+                            </div>
+                        </div>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+</body>
 </html>

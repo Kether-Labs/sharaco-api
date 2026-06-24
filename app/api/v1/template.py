@@ -9,7 +9,10 @@ from app.models.document_template import DocumentTemplate
 from app.services.templateService import TemplateService
 from app.services.pdfRenderer import pdf_renderer
 from app.schemas.document_template import DocumentTemplateCreate, DocumentTemplateRead, DocumentTemplateUpdate
+from fastapi.responses import Response
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["templates"])
 
 
@@ -42,8 +45,56 @@ async def get_available_layouts(
             "description": "Style sobre et économe, idéal pour les prestations simples",
             "preview_url": "/api/v1/templates/layouts/minimal/preview",
         },
+
+        {
+            "id": "bold",
+            "name": "Audacieux",
+            "description": "Design énergique avec des éléments graphiques audacieux",
+            "preview_url": "/api/v1/templates/layouts/bold/preview",
+        },
+        {
+            "id": "elegant",
+            "name": "Élégant",
+            "description": "Style raffiné et sophistiqué, parfait pour les clients exigeants",
+            "preview_url": "/api/v1/templates/layouts/elegant/preview",
+        },
     ]
 
+
+
+@router.get("/{layout_id}/preview.png")
+async def get_layout_preview_png(
+    layout_id: str,
+):
+    """Génère une image PNG de preview d'un layout (PUBLIC)."""
+    
+    valid_layouts = ["modern", "classic", "minimal","bold", "elegant"]
+    if layout_id not in valid_layouts:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Layout '{layout_id}' non trouvé. Options: {', '.join(valid_layouts)}"
+        )
+
+    try:
+        png_bytes = await pdf_renderer.render_template_preview_png(
+            layout_style=layout_id,
+        )
+
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={
+                "Cache-Control": "public, max-age=86400",  # 24h
+                "Content-Disposition": f'inline; filename="preview-{layout_id}.png"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Erreur preview layout {layout_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur de génération: {str(e)}"
+        )
+    
 
 @router.get("/layouts/{layout_id}/preview", response_class=HTMLResponse)
 async def preview_layout(

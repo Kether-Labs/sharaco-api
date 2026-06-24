@@ -3,532 +3,719 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ document.type.value }} - {{ document.number }}</title>
-    <!-- Modern Typography: Geist Sans -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/style.css">
+    <title>{{ document.type.value or 'DEVIS' }} - {{ document.number or 'N/A' }}</title>
     <style>
-        /* ══════════════════════════════════════
-           MODERN A4 INVOICE SYSTEM
-           Aesthetic: Professional, Minimalist, Data-Dense
-           Register: Product (Service Document)
-        ══════════════════════════════════════ */
-
-        :root {
-            --primary: {{ template.primary_color or '#0F172A' }};
-            --primary-foreground: #FFFFFF;
-            
-            --zinc-50:  #FAFAFA;
-            --zinc-100: #F4F4F5;
-            --zinc-200: #E4E4E7;
-            --zinc-300: #D4D4D8;
-            --zinc-400: #A1A1AA;
-            --zinc-500: #71717A;
-            --zinc-600: #52525B;
-            --zinc-700: #3F3F46;
-            --zinc-800: #27272A;
-            --zinc-900: #18181B;
-            --zinc-950: #09090B;
-
-            /* A4 Dimensions */
-            --a4-width: 210mm;
-            --a4-height: 297mm;
-            --margin: 20mm;
-        }
-
-        *, *::before, *::after {
+        /* ═══════════════════════════════════════════════════════════════
+           RESET & BASE
+        ═══════════════════════════════════════════════════════════════ */
+        * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #18181b;
+            background: #f4f4f5;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
 
-        body {
-            font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            font-size: 10pt;
-            line-height: 1.5;
-            color: var(--zinc-900);
-            background: var(--zinc-100);
-            display: flex;
-            justify-content: center;
-            padding: 40px 0;
-        }
-
-        /* Sheet Container */
-        .sheet {
+        /* ═══════════════════════════════════════════════════════════════
+           PAGE CONTAINER
+        ═══════════════════════════════════════════════════════════════ */
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
             background: white;
-            width: var(--a4-width);
-            min-height: var(--a4-height);
-            padding: var(--margin);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
+            padding: 15mm;
             position: relative;
+        }
+.page::before {
+    content: '';
+    display: block;
+    height: 0;
+    padding-top: 0;
+}
+        @media screen {
+            body {
+                padding: 20px;
+            }
+            .page {
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
         }
 
         @media print {
-            body { background: white; padding: 0; }
-            .sheet { box-shadow: none; margin: 0; width: 100%; height: 100%; }
-            @page { size: A4; margin: 0; }
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            body {
+                background: white;
+                padding: 0;
+            }
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm;
+            }
         }
 
-        /* ── Header Section ── */
+        /* ══════════════════════════════════════════════════════════════
+           HEADER
+        ═══════════════════════════════════════════════════════════════ */
         .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            /* Edge-to-edge breakout */
-            margin: calc(var(--margin) * -1) calc(var(--margin) * -1) 40px calc(var(--margin) * -1);
-            background: var(--primary);
-            color: var(--primary-foreground);
-            height: 100px; /* Requested height */
-            padding: 0 var(--margin);
+            background: {{ template.primary_color or '#0ea5e9' }};
+            color: white;
+            margin: -15mm -15mm 30px -15mm;
+            padding: 20px 25px;
             border-bottom: 4px solid rgba(0, 0, 0, 0.1);
-            position: relative;
-            overflow: hidden;
+        }
+
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .header-table td {
+            vertical-align: middle;
+            padding: 0;
+        }
+
+        .header-left {
+            width: 50%;
+        }
+
+        .header-right {
+            width: 50%;
+            text-align: right;
+        }
+
+        .brand-row {
+            display: table;
+            width: 100%;
+        }
+
+        .brand-cell {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .logo-cell {
+            width: 60px;
+            padding-right: 15px;
         }
 
         .logo-circle {
-            flex-shrink: 0;
-            width: 70px; height: 70px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            border: 2px dashed rgba(255,255,255,0.6);
-            display: flex; align-items: center; justify-content: center;
-            overflow: hidden;
-        }
-        .logo-circle img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
-        .logo-placeholder { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.7); letter-spacing: 1px; }
-        /* Premium "Liquid Glass" refraction line */
-        .header::after {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.15);
+            border: 2px dashed rgba(255, 255, 255, 0.6);
+            display: table-cell;
+            vertical-align: middle;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
         }
 
-        .brand-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
+        .logo-circle span {
+            display: table-cell;
+            vertical-align: middle;
+            font-size: 9px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 1px;
         }
 
-        .logo-container {
-            height: 40px;
-            display: flex;
-            align-items: center;
-        }
-
-        .logo-container img {
-            max-height: 100%;
-            max-width: 140px;
-            object-fit: contain;
+        .logo-img {
+            max-width: 60px;
+            max-height: 50px;
             filter: brightness(0) invert(1);
         }
 
-        .company-name-header {
+        .company-name {
+            font-size: 16pt;
             font-weight: 800;
-            font-size: 14pt;
-            color: white;
-            letter-spacing: -0.03em;
             text-transform: uppercase;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            word-break: break-word;
         }
 
-        .doc-meta {
-            display: flex;
-            align-items: center;
-            gap: 40px;
-            height: 100%;
+        .doc-info {
+            display: table;
+            width: 100%;
+            margin-top: 10px;
         }
 
-        .doc-title-wrapper {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            height: 100%;
+        .doc-info-cell {
+            display: table-cell;
+            vertical-align: middle;
         }
 
         .doc-title {
-            font-size: 24pt;
+            font-size: 32pt;
             font-weight: 900;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: white;
+            letter-spacing: 0.05em;
             line-height: 1;
-            margin: 0;
+            white-space: nowrap;
         }
 
-        .doc-ref-row {
-            display: flex;
-            align-items: center;
-            gap: 25px;
-            border-left: 1px solid rgba(255, 255, 255, 0.2);
-            padding-left: 25px;
-            height: 35px;
+        .doc-meta-table {
+            display: table;
+            width: 100%;
+            margin-top: 8px;
         }
 
-        .meta-item {
-            display: flex;
-            flex-direction: column;
+        .doc-meta-cell {
+            display: table-cell;
+            padding-left: 20px;
+            border-left: 1px solid rgba(255, 255, 255, 0.3);
+            vertical-align: top;
+        }
+
+        .meta-row {
+            display: table;
+            width: 100%;
+        }
+
+        .meta-cell {
+            display: table-cell;
+            padding-right: 20px;
+            vertical-align: top;
         }
 
         .meta-label {
             font-size: 7pt;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            color: rgba(255, 255, 255, 0.5);
+            color: rgba(255, 255, 255, 0.6);
             font-weight: 700;
-            line-height: 1;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
 
         .meta-value {
-            font-size: 10pt;
+            font-size: 11pt;
             font-weight: 800;
             color: white;
-            line-height: 1;
+            white-space: nowrap;
         }
 
-        /* ── Addresses Section ── */
+        /* ═══════════════════════════════════════════════════════════════
+           ADDRESSES
+        ═══════════════════════════════════════════════════════════════ */
         .addresses {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin-bottom: 35px;
+            margin-bottom: 30px;
         }
 
-        .address-block {
-            display: flex;
-            flex-direction: column;
+        .address-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .address-table td {
+            vertical-align: top;
+            padding: 0 15px 0 0;
+        }
+
+        .address-table td:last-child {
+            padding-right: 0;
         }
 
         .address-label {
-            font-size: 7.5pt;
+            font-size: 8pt;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--zinc-400);
+            letter-spacing: 0.08em;
+            color: #a1a1aa;
             font-weight: 700;
             margin-bottom: 8px;
-            border-bottom: 1px solid var(--zinc-100);
+            border-bottom: 2px solid #f4f4f5;
             padding-bottom: 4px;
         }
 
         .address-content {
-            font-size: 9.5pt;
-            color: var(--zinc-700);
-            line-height: 1.4;
-        }
-
-        .sender-details {
-            font-size: 8.5pt;
-            color: var(--zinc-500);
-            margin-top: 4px;
+            font-size: 10pt;
+            color: #3f3f46;
+            line-height: 1.6;
         }
 
         .client-name {
             font-weight: 700;
-            color: var(--zinc-950);
-            font-size: 10.5pt;
-            margin-bottom: 2px;
+            color: #09090b;
+            font-size: 11pt;
+            margin-bottom: 4px;
         }
 
-        /* ── Items Table ── */
-        .items-container {
-            flex: 1;
+        .sender-details {
+            font-size: 9pt;
+            color: #71717a;
+            margin-top: 6px;
+            line-height: 1.5;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
+        /* ══════════════════════════════════════════════════════════════
+           ITEMS TABLE
+        ══════════════════════════════════════════════════════════════ */
+        .items-section {
+            max-height: 150mm;
             margin-bottom: 30px;
         }
 
-        th {
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .items-table thead tr {
+            border-bottom: 3px solid #18181b;
+        }
+
+        .items-table th {
             text-align: left;
             font-size: 8pt;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--zinc-500);
-            font-weight: 600;
+            letter-spacing: 0.08em;
+            color: #71717a;
+            font-weight: 700;
             padding: 12px 8px;
-            border-bottom: 2px solid var(--zinc-900);
         }
 
-        td {
+        .items-table td {
             padding: 12px 8px;
-            border-bottom: 1px solid var(--zinc-100);
+            border-bottom: 1px solid #f4f4f5;
+            font-size: 10pt;
             vertical-align: top;
         }
 
+        .items-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
         .col-desc { width: 45%; }
-        .col-qty  { width: 10%; text-align: right; }
+        .col-qty { width: 10%; text-align: right; }
         .col-price { width: 15%; text-align: right; }
-        .col-tva   { width: 10%; text-align: right; }
+        .col-tva { width: 10%; text-align: right; }
         .col-total { width: 20%; text-align: right; font-weight: 600; }
 
         .item-desc {
-            font-weight: 500;
-            color: var(--zinc-900);
+            font-weight: 600;
+            color: #18181b;
+            line-height: 1.5;
         }
 
-        /* ── Totals Section ── */
+        /* ═══════════════════════════════════════════════════════════════
+           TOTALS & NOTES
+        ═══════════════════════════════════════════════════════════════ */
         .totals-section {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 20px;
+            margin-bottom: 30px;
         }
 
         .totals-table {
-            width: 300px;
+            width: 100%;
+            border-collapse: collapse;
         }
 
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--zinc-100);
+        .totals-table td {
+            vertical-align: top;
+            padding: 0;
         }
 
-        .total-row.grand-total {
-            border-bottom: none;
-            padding-top: 16px;
-            margin-top: 8px;
-            border-top: 2px solid var(--zinc-900);
+        .notes-cell {
+            width: 60%;
+            padding-right: 30px;
         }
 
-        .total-label {
-            font-size: 9pt;
-            color: var(--zinc-600);
+        .totals-cell {
+            width: 40%;
         }
 
-        .total-value {
-            font-weight: 600;
-            color: var(--zinc-950);
-        }
-
-        .grand-total .total-label {
-            font-size: 11pt;
-            font-weight: 800;
-            color: var(--zinc-950);
+        .notes-label {
+            font-size: 8pt;
             text-transform: uppercase;
-        }
-
-        .grand-total .total-value {
-            font-size: 14pt;
-            font-weight: 800;
-            color: var(--primary);
-        }
-
-        /* ── Signature Section ── */
-        .signature-area {
-            margin-top: 40px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-        }
-
-        .sig-box {
-            border: 1px solid var(--zinc-200);
-            background: var(--zinc-50);
-            height: 100px;
-            border-radius: 4px;
-            padding: 12px;
-            font-size: 8pt;
-            color: var(--zinc-400);
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-        }
-
-        /* ── Footer ── */
-        .footer {
-            margin-top: auto;
-            padding-top: 40px;
-            border-top: 1px solid var(--zinc-200);
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            font-size: 8pt;
-            color: var(--zinc-500);
-        }
-
-        .footer-col-title {
+            letter-spacing: 0.08em;
+            color: #a1a1aa;
             font-weight: 700;
-            color: var(--zinc-800);
             margin-bottom: 8px;
-            text-transform: uppercase;
+            border-bottom: 2px solid #f4f4f5;
+            padding-bottom: 4px;
         }
 
-        .footer-text {
+        .notes-content {
+            font-size: 9.5pt;
+            color: #52525b;
             line-height: 1.6;
         }
 
-        .bank-info {
-            font-family: monospace;
-            background: var(--zinc-50);
-            padding: 8px;
-            border-radius: 4px;
-            color: var(--zinc-700);
+        .totals-box {
+            width: 100%;
         }
 
+        .total-row {
+            display: table;
+            width: 100%;
+            padding: 8px 0;
+            border-bottom: 1px solid #f4f4f5;
+        }
+
+        .total-row:last-child {
+            border-bottom: none;
+        }
+
+        .total-row.grand-total {
+            border-top: 3px solid #18181b;
+            border-bottom: none;
+            padding-top: 12px;
+            margin-top: 8px;
+        }
+
+        .total-label-cell {
+            display: table-cell;
+            font-size: 9.5pt;
+            color: #52525b;
+            font-weight: 500;
+        }
+
+        .total-value-cell {
+            display: table-cell;
+            text-align: right;
+            font-weight: 700;
+            color: #09090b;
+            white-space: nowrap;
+        }
+
+        .grand-total .total-label-cell {
+            font-size: 11pt;
+            font-weight: 800;
+            color: #09090b;
+            text-transform: uppercase;
+        }
+
+        .grand-total .total-value-cell {
+            font-size: 15pt;
+            font-weight: 900;
+            color: {{ template.primary_color or '#0ea5e9' }};
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           SIGNATURE
+        ═══════════════════════════════════════════════════════════════ */
+        .signature-section {
+            margin-bottom: 30px;
+        }
+
+        .signature-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .signature-table td {
+            vertical-align: top;
+            padding: 0 15px 0 0;
+        }
+
+        .signature-table td:last-child {
+            padding-right: 0;
+        }
+
+        .sig-label {
+            font-size: 8pt;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #a1a1aa;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .sig-box {
+            border: 2px solid #e4e4e7;
+            background: #fafafa;
+            min-height: 80px;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 9pt;
+            color: #a1a1aa;
+            text-align: center;
+            display: table-cell;
+            vertical-align: middle;
+            width: 100%;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           FOOTER
+        ═══════════════════════════════════════════════════════════════ */
+        .footer {
+            margin-top: auto;
+            padding-top: 25px;
+            border-top: 2px solid #e4e4e7;
+        }
+
+        .footer-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .footer-table td {
+            vertical-align: top;
+            padding: 0 15px 0 0;
+            font-size: 8.5pt;
+            color: #71717a;
+            line-height: 1.6;
+        }
+
+        .footer-table td:last-child {
+            padding-right: 0;
+        }
+
+        .footer-col-title {
+            font-weight: 800;
+            color: #27272a;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 8.5pt;
+        }
+
+        .bank-info {
+            font-family: 'Courier New', Courier, monospace;
+            background: #fafafa;
+            padding: 8px;
+            border-radius: 4px;
+            color: #3f3f46;
+            font-size: 8pt;
+            word-break: break-all;
+            border: 1px solid #e4e4e7;
+            margin-top: 4px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           PAGE BREAK CONTROL
+        ═══════════════════════════════════════════════════════════════ */
+        @media print {
+            .header, .addresses, .items-section, .totals-section {
+                page-break-inside: avoid;
+            }
+            
+            tr {
+                page-break-inside: avoid;
+            }
+        }
     </style>
 </head>
 <body>
 
-<div class="sheet">
-    <!-- Header -->
-    <header class="header">
-        <div class="brand-info">
-            <div class="logo-container">
-                {% if template.logo_url %}
-                <img src="{{ template.logo_url }}" alt="Logo">
-                {% else %}
-                <div class="logo-circle">
-                <span class="logo-placeholder">Logo</span>
-                </div>
-                
-                {% endif %}
-            </div>
-            {% if template.logo_url %}
-            <div class="company-name-header">{% if template.header_text %}{{ template.header_text }}{% else %}{{ user.company_name }}{% endif %}</div>
-            {% endif %}
-        </div>
-        <div class="doc-meta">
-            <div class="doc-title-wrapper">
-                <h1 class="doc-title">{{ document.type.value }}</h1>
-            </div>
-            <div class="doc-ref-row">
-                <div class="meta-item">
-                    <span class="meta-label">Référence</span>
-                    <span class="meta-value">#{{ document.number }}</span>
-                </div>
-                <div class="meta-item">
-                    <span class="meta-label">Date</span>
-                    <span class="meta-value">{{ document.created_at.strftime('%d/%m/%Y') }}</span>
-                </div>
-            </div>
-        </div>
-    </header>
+<div class="page">
+    <!-- ══════════════════════════════════════════════════════════════
+         HEADER
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="header">
+        <table class="header-table">
+            <tr>
+                <td class="header-left">
+                    <table class="brand-row">
+                        <tr>
+                            <td class="logo-cell">
+                                {% if template.logo_url %}
+                                    <img src="{{ template.logo_url }}" alt="Logo" class="logo-img">
+                                {% else %}
+                                    <div class="logo-circle">
+                                        <span>LOGO</span>
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="brand-cell">
+                                <div class="company-name">
+                                    {% if template.header_text %}
+                                        {{ template.header_text }}
+                                    {% elif user.company_name %}
+                                        {{ user.company_name }}
+                                    {% elif user.email %}
+                                        {{ user.email.split('@')[0] | upper }}
+                                    {% else %}
+                                        VOTRE ENTREPRISE
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <td class="header-right">
+                    <div class="doc-title">{{ document.type.value or 'DEVIS' }}</div>
+                    <table class="doc-meta-table">
+                        <tr>
+                            <td class="doc-meta-cell">
+                                <table class="meta-row">
+                                    <tr>
+                                        <td class="meta-cell">
+                                            <div class="meta-label">RÉFÉRENCE</div>
+                                            <div class="meta-value">#{{ document.number or 'N/A' }}</div>
+                                        </td>
+                                        <td class="meta-cell">
+                                            <div class="meta-label">DATE</div>
+                                            <div class="meta-value">{{ document.created_at.strftime('%d/%m/%Y') if document.created_at else '-' }}</div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
 
-    <!-- Addresses -->
-    <section class="addresses">
-        <div class="address-block">
-            <span class="address-label">Émetteur</span>
-            <div class="address-content">
-                <strong>{{ user.company_name }}</strong><br>
-                {{ user.address }}
-                <div class="sender-details">
-                    {% if user.phone %}Tél: {{ user.phone }}<br>{% endif %}
-                    {% if user.email %}{{ user.email }}<br>{% endif %}
-                    {% if user.tax_id %}SIRET: {{ user.tax_id }}{% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="address-block">
-            <span class="address-label">Destinataire</span>
-            <div class="address-content">
-                <div class="client-name">{{ client.name }}</div>
-                {{ client.address }}<br>
-                {% if client.email %}{{ client.email }}{% endif %}
-                {% if client.phone %}<br>{{ client.phone }}{% endif %}
-            </div>
-        </div>
-    </section>
+    <!-- ═══════════════════════════════════════════════════════════════
+         ADDRESSES
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="addresses">
+        <table class="address-table">
+            <tr>
+                <td style="width: 50%;">
+                    <div class="address-label">ÉMETTEUR</div>
+                    <div class="address-content">
+                        <strong>{{ user.company_name or user.email or 'Entreprise' }}</strong><br>
+                        {% if user.address %}{{ user.address }}<br>{% endif %}
+                        <div class="sender-details">
+                            {% if user.phone %}Tél: {{ user.phone }}<br>{% endif %}
+                            {% if user.email %}{{ user.email }}<br>{% endif %}
+                            {% if user.tax_id %}SIRET: {{ user.tax_id }}{% endif %}
+                        </div>
+                    </div>
+                </td>
+                <td style="width: 50%;">
+                    <div class="address-label">DESTINATAIRE</div>
+                    <div class="address-content">
+                        <div class="client-name">{{ client.name or 'Client' }}</div>
+                        {% if client.address %}{{ client.address }}<br>{% endif %}
+                        {% if client.email %}{{ client.email }}<br>{% endif %}
+                        {% if client.phone %}{{ client.phone }}{% endif %}
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
 
-    <!-- Items -->
-    <section class="items-container">
-        <table>
+    <!-- ═══════════════════════════════════════════════════════════════
+         ITEMS
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="items-section">
+        <table class="items-table">
             <thead>
                 <tr>
-                    <th class="col-desc">Description</th>
-                    <th class="col-qty">Qté</th>
-                    <th class="col-price">Prix Unit. HT</th>
+                    <th class="col-desc">DESCRIPTION</th>
+                    <th class="col-qty">QTÉ</th>
+                    <th class="col-price">PRIX UNIT. HT</th>
                     <th class="col-tva">TVA</th>
-                    <th class="col-total">Total HT</th>
+                    <th class="col-total">TOTAL HT</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in items %}
-                {% set ht = item.quantity * item.unit_price_cents / 100 %}
+                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) / 100 %}
                 <tr>
                     <td class="col-desc">
-                        <div class="item-desc">{{ item.description }}</div>
+                        <div class="item-desc">{{ item.description or 'Article sans description' }}</div>
                     </td>
-                    <td class="col-qty">{{ item.quantity }}</td>
-                    <td class="col-price">{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
-                    <td class="col-tva">{{ item.tax_rate }}%</td>
+                    <td class="col-qty">{{ item.quantity or 1 }}</td>
+                    <td class="col-price">{{ "%.2f"|format((item.unit_price_cents or 0) / 100) }} {{ currency }}</td>
+                    <td class="col-tva">{{ item.tax_rate or 0 }}%</td>
                     <td class="col-total">{{ "%.2f"|format(ht) }} {{ currency }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-    </section>
+    </div>
 
-    <!-- Totals & Notes -->
-    <section class="totals-section">
-        <div style="flex: 1; padding-right: 40px;">
-            {% if template.footer_text %}
-            <div class="address-label" style="border:none; margin-bottom: 8px;">Notes</div>
-            <div class="footer-text" style="font-size: 9pt; color: var(--zinc-600);">
-                {{ template.footer_text }}
-            </div>
-            {% endif %}
-        </div>
-        <div class="totals-table">
-            <div class="total-row">
-                <span class="total-label">Total HT</span>
-                <span class="total-value">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</span>
-            </div>
-            <div class="total-row">
-                <span class="total-label">TVA Total</span>
-                <span class="total-value">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</span>
-            </div>
-            <div class="total-row grand-total">
-                <span class="total-label">Total TTC</span>
-                <span class="total-value">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
-            </div>
-        </div>
-    </section>
+    <!-- ═══════════════════════════════════════════════════════════════
+         TOTALS & NOTES
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="totals-section">
+        <table class="totals-table">
+            <tr>
+                <td class="notes-cell">
+                    {% if template.footer_text %}
+                        <div class="notes-label">NOTES</div>
+                        <div class="notes-content">{{ template.footer_text }}</div>
+                    {% endif %}
+                </td>
+                <td class="totals-cell">
+                    <div class="totals-box">
+                        <div class="total-row">
+                            <div class="total-label-cell">Total HT</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</div>
+                        </div>
+                        <div class="total-row">
+                            <div class="total-label-cell">TVA Total</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</div>
+                        </div>
+                        <div class="total-row grand-total">
+                            <div class="total-label-cell">TOTAL TTC</div>
+                            <div class="total-value-cell">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
 
-    <!-- Signature -->
-    <section class="signature-area">
-        <div></div>
-        <div class="address-block">
-            <span class="address-label">Bon pour accord (Signature)</span>
-            <div class="sig-box">
-                Cachet et signature
-            </div>
-        </div>
-    </section>
+    <!-- ═══════════════════════════════════════════════════════════════
+         SIGNATURE
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="signature-section">
+        <table class="signature-table">
+            <tr>
+                <td style="width: 50%;"></td>
+                <td style="width: 50%;">
+                    <div class="sig-label">BON POUR ACCORD (SIGNATURE)</div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td class="sig-box">Cachet et signature</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-col">
-            <div class="footer-col-title">Coordonnées</div>
-            <div class="footer-text">
-                {{ user.company_name }}<br>
-                {{ user.address }}<br>
-                {{ user.email }}
-            </div>
-        </div>
-        <div class="footer-col">
-            <div class="footer-col-title">Informations Légales</div>
-            <div class="footer-text">
-                SIRET: {{ user.tax_id or 'Non renseigné' }}<br>
-                {% if user.vat_number %}TVA Intra: {{ user.vat_number }}{% endif %}
-            </div>
-        </div>
-        <div class="footer-col">
-            <div class="footer-col-title">Règlement</div>
-            <div class="footer-text">
-                {% if user.payment_info %}
-                <div class="bank-info">{{ user.payment_info }}</div>
-                {% else %}
-                Paiement à réception de facture.
-                {% endif %}
-            </div>
-        </div>
-    </footer>
+    <!-- ═══════════════════════════════════════════════════════════════
+         FOOTER
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="footer">
+        <table class="footer-table">
+            <tr>
+                <td style="width: 33.33%;">
+                    <div class="footer-col-title">COORDONNÉES</div>
+                    <div>
+                        {{ user.company_name or 'Entreprise' }}<br>
+                        {% if user.address %}{{ user.address }}<br>{% endif %}
+                        {{ user.email or '' }}
+                    </div>
+                </td>
+                <td style="width: 33.33%;">
+                    <div class="footer-col-title">INFORMATIONS LÉGALES</div>
+                    <div>
+                        SIRET: {{ user.tax_id or 'Non renseigné' }}<br>
+                        {% if user.vat_number %}TVA Intra: {{ user.vat_number }}{% endif %}
+                    </div>
+                </td>
+                <td style="width: 33.33%;">
+                    <div class="footer-col-title">RÈGLEMENT</div>
+                    <div>
+                        {% if user.payment_info %}
+                            <div class="bank-info">{{ user.payment_info }}</div>
+                        {% else %}
+                            Paiement à réception de facture.<br>
+                            Délai: 30 jours
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
 </div>
 
 </body>
