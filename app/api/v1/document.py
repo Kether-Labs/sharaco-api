@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.responses import Response
 from app.services.pdfRenderer import pdf_renderer
 from uuid import UUID
 from typing import Optional
@@ -373,7 +374,49 @@ async def delete_document(
 # ============================================================
 # 📄 LISTE ET CRÉATION
 # ============================================================
+@router.get("/{document_id}/preview.png")
+async def get_document_preview_png(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Génère une image PNG de preview d'un document sauvegardé."""
+    logger.info(f"🖼️ GET /{document_id}/preview.png")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
 
+    from app.services.clientService import ClientService
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+
+    template = await _get_document_template(db, document, current_user)
+    
+    logger.info(f"🖼️ Template layout_style: {template.layout_style}")
+
+    # Générer le HTML
+    html_content = pdf_renderer.render_html(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
+    )
+
+    # Générer le PNG
+    png_bytes = await pdf_renderer.render_png_from_html(html_content)
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "public, max-age=3600",  # Cache 1 heure
+            "Content-Disposition": f'inline; filename="preview-{document_id}.png"'
+        }
+    )
+
+    
 @router.get("/", response_model=list[DocumentListRead])
 async def list_documents(
     type: Optional[DocumentType] = Query(None),
@@ -407,7 +450,7 @@ async def list_documents(
             "due_date": doc.due_date,
             "client_id": doc.client_id,
             "template_id": doc.template_id,
-            "layout_style": getattr(doc, 'layout_style', 'classic'),
+            "layout_style": doc.layout_style,
             "grand_total_cents": totals["grand_total_cents"],
         })
     return result

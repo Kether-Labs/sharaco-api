@@ -246,6 +246,31 @@ class PDFRenderer:
         except Exception as e:
             logger.error(f"Erreur génération preview PNG: {e}", exc_info=True)
             raise
+    
+    async def render_png_from_html(self, html_string: str) -> bytes:
+        """Génère un PNG directement depuis une chaîne HTML."""
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
+                page = await browser.new_page(viewport={"width": 794, "height": 1123})
+                
+                await page.set_content(html_string, wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+                
+                screenshot = await page.screenshot(
+                    full_page=True,
+                    type="png"
+                )
+                
+                await browser.close()
+                return screenshot
+            
+        except Exception as e:
+            logger.error(f"Erreur génération PNG depuis HTML: {e}", exc_info=True)
+            raise
 
     async def render_pdf_from_html(self, html_string: str) -> BytesIO:
         """Génère un PDF directement depuis une chaîne HTML."""

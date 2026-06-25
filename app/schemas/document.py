@@ -86,7 +86,7 @@ class DocumentRead(BaseModel):
     template_id: Optional[str] = None
     items: List[DocumentItemRead] = []
     notes: Optional[str] = None
-
+    layout_style: Optional[str] = None
     # Totaux calculés
     subtotal_cents: Optional[int] = None
     tax_total_cents: Optional[int] = None
@@ -170,5 +170,5 @@ class DocumentListRead(BaseModel):
     client_id: UUID
     template_id: Optional[str] = None
     grand_total_cents: Optional[int] = None
-
+    layout_style: Optional[str] = None
     model_config = {"from_attributes": True}
