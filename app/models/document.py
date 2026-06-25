@@ -3,7 +3,12 @@ from typing import Optional, List
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from enum import Enum
+from app.utils.datetime import to_naive_utc
 
+
+def _utcnow_naive() -> datetime:
+    """Retourne l'heure UTC naive (sans timezone)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class DocumentType(str, Enum):
     DEVIS = "DEVIS"
@@ -27,7 +32,7 @@ class Document(SQLModel, table=True):
     status: DocumentStatus = Field(default=DocumentStatus.DRAFT)
     number: Optional[str] = Field(default=None, index=True)
 
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow_naive)
     due_date: Optional[datetime] = None
     sent_at: Optional[datetime] = None  # Date d'envoi par email
     viewed_at: Optional[datetime] = None  # Première visualisation
@@ -39,11 +44,16 @@ class Document(SQLModel, table=True):
     client_id: UUID = Field(foreign_key="client.id")
     client: "Client" = Relationship(back_populates="documents")
 
+
+    layout_style: str = Field(
+        default="classic",
+        description="Style de layout prédéfini (modern, classic, minimal, bold, elegant)"
+    )
     # === Template de design ===
     template_id: Optional[UUID] = Field(
         default=None,
         foreign_key="documenttemplate.id",
-        description="Template de design appliqué au document"
+        description="Template personnalisé (UUID). Si null, utilise layout_style."
     )
     template: Optional["DocumentTemplate"] = Relationship(back_populates="documents")
 

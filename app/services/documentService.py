@@ -1,17 +1,25 @@
+# app/services/documentService.py
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.models.document import Document, DocumentItem, DocumentType, DocumentStatus
 from app.models.document_template import DocumentTemplate
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timezone
 from app.services.templateService import TemplateService
-from uuid import UUID, uuid4
+from uuid import uuid4
 from app.models.client import Client
 from app.models.user import User
-
 from app.services.pdfRenderer import pdf_renderer
+import logging
+from app.utils.datetime import to_naive_utc
+
+logger = logging.getLogger(__name__)
+
+
 class DocumentService:
+    
     @staticmethod
     async def create_document(
         db: AsyncSession,
@@ -19,12 +27,56 @@ class DocumentService:
         user_id: UUID,
         client_id: UUID,
         items: list[dict],
+        layout_style: str = "classic",
         template_id: Optional[UUID] = None,
         due_date: Optional[datetime] = None,
+        notes: Optional[str] = None,
+        document_id: Optional[UUID] = None,
     ) -> Document:
-        """Crée un document (devis/facture) avec ses lignes et sa numérotation auto."""
+        """Crée un document avec layout_style ou template_id."""
+        logger.info(f"🔨 create_document appelé avec document_id={document_id}, layout={layout_style}")
 
-        # Vérifier le template si fourni
+        # ✅ Vérifier si le document existe déjà (upsert)
+        if document_id:
+            existing = await db.execute(
+                select(Document).where(Document.id == document_id)
+            )
+            existing_doc = existing.scalar_one_or_none()
+            
+            if existing_doc:
+                logger.info(f"📄 Document {document_id} existe déjà, mise à jour")
+                existing_doc.type = type
+                existing_doc.client_id = client_id
+                existing_doc.layout_style = layout_style
+                existing_doc.template_id = template_id
+                existing_doc.due_date = to_naive_utc(due_date)
+                existing_doc.notes = notes
+                
+                # Supprimer les anciens items
+                for old_item in list(existing_doc.items):
+                    await db.delete(old_item)
+                await db.flush()
+                
+                # Créer les nouveaux items
+                for item_data in items:
+                    item = DocumentItem(
+                        description=item_data["description"],
+                        quantity=item_data.get("quantity", 1),
+                        unit_price_cents=item_data["unit_price_cents"],
+                        tax_rate=item_data.get("tax_rate", 20),
+                        document_id=existing_doc.id,
+                    )
+                    db.add(item)
+                
+                # ✅ NE PAS faire commit() ici, laisser get_db gérer
+                await db.flush()
+                
+                # Recharger avec les items
+                await db.refresh(existing_doc, ['items'])
+                logger.info(f"✅ Document {existing_doc.id} mis à jour avec {len(existing_doc.items)} items")
+                return existing_doc
+
+        # Si template_id fourni, vérifier qu'il existe
         if template_id:
             tmpl = await db.execute(
                 select(DocumentTemplate).where(
@@ -33,25 +85,34 @@ class DocumentService:
                 )
             )
             if not tmpl.scalar_one_or_none():
-                raise ValueError("Template introuvable ou n'appartient pas à cet utilisateur")
+                raise ValueError("Template introuvable")
 
-        # Générer le numéro automatique
+        # Générer le numéro
         number = await DocumentService._generate_number(db, type, user_id)
+
+        # ✅ Convertir les datetimes en UTC naive
+        now_utc = to_naive_utc(datetime.now(timezone.utc))
+        due_date_utc = to_naive_utc(due_date)
 
         # Créer le document
         document = Document(
+            id=document_id or uuid4(),
             type=type,
             status=DocumentStatus.DRAFT,
             number=number,
             user_id=user_id,
             client_id=client_id,
+            layout_style=layout_style,
             template_id=template_id,
-            due_date=due_date,
+            created_at=now_utc,
+            due_date=due_date_utc,
+            notes=notes,
         )
         db.add(document)
-        await db.flush()  # Pour obtenir l'ID du document
+        await db.flush()  # ← flush() pour obtenir l'ID, pas commit()
+        logger.info(f"📝 Document {document.id} ajouté à la session")
 
-        # Créer les lignes
+        # Créer les items
         for item_data in items:
             item = DocumentItem(
                 description=item_data["description"],
@@ -62,16 +123,26 @@ class DocumentService:
             )
             db.add(item)
 
-        await db.commit()
-        await db.refresh(document)
+        # ✅ NE PAS faire commit() ici, laisser get_db gérer
+        await db.flush()
+        logger.info(f"✅ {len(items)} items ajoutés au document {document.id}")
+        
+        # Recharger les items
+        await db.refresh(document, ['items'])
+        logger.info(f"✅ Document {document.id} prêt avec {len(document.items)} items")
+        
         return document
 
     @staticmethod
     async def get_by_id(db: AsyncSession, document_id: UUID, user_id: UUID) -> Document | None:
-        """Récupère un document avec ses lignes, en vérifiant l'appartenance."""
-        statement = select(Document).where(
-            Document.id == document_id,
-            Document.user_id == user_id,
+        """Récupère un document avec ses lignes."""
+        statement = (
+            select(Document)
+            .options(selectinload(Document.items))
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+            )
         )
         result = await db.execute(statement)
         return result.scalar_one_or_none()
@@ -87,7 +158,11 @@ class DocumentService:
         limit: int = 50,
     ) -> list[Document]:
         """Liste les documents avec filtres et pagination."""
-        statement = select(Document).where(Document.user_id == user_id)
+        statement = (
+            select(Document)
+            .options(selectinload(Document.items))
+            .where(Document.user_id == user_id)
+        )
 
         if type:
             statement = statement.where(Document.type == type)
@@ -107,12 +182,11 @@ class DocumentService:
         new_status: DocumentStatus,
     ) -> Document:
         """Change le statut d'un document."""
-        # Règles de transition
         valid_transitions = {
             DocumentStatus.DRAFT: [DocumentStatus.SENT],
             DocumentStatus.SENT: [DocumentStatus.VIEWED, DocumentStatus.PAID],
             DocumentStatus.VIEWED: [DocumentStatus.PAID],
-            DocumentStatus.PAID: [],  # Pas de retour possible
+            DocumentStatus.PAID: [],
         }
 
         if new_status not in valid_transitions.get(document.status, []):
@@ -122,7 +196,7 @@ class DocumentService:
 
         document.status = new_status
         db.add(document)
-        await db.commit()
+        await db.flush()  # ← flush() au lieu de commit()
         await db.refresh(document)
         return document
 
@@ -130,18 +204,50 @@ class DocumentService:
     async def update_document(
         db: AsyncSession,
         document: Document,
-        due_date: Optional[datetime] = None,
+        client_id: Optional[UUID] = None,
         template_id: Optional[UUID] = None,
+        layout_style: Optional[str] = None,  # ← AJOUTÉ
+        due_date: Optional[datetime] = None,
+        items: Optional[list[dict]] = None,
+        notes: Optional[str] = None,
     ) -> Document:
-        """Met à jour les champs modifiables d'un document."""
-        if due_date is not None:
-            document.due_date = due_date
+        """Met à jour un document."""
+        logger.info(f"🔄 update_document appelé pour {document.id}")
+        
+        if client_id is not None:
+            document.client_id = client_id
+
         if template_id is not None:
             document.template_id = template_id
+        if layout_style is not None:
+            document.layout_style = layout_style
+        if due_date is not None:
+            document.due_date = to_naive_utc(due_date)
+        if notes is not None:
+            document.notes = notes
 
-        db.add(document)
+        if items is not None:
+        # Supprimer les anciens items
+            for old_item in list(document.items):
+                await db.delete(old_item)
+            await db.flush()  # ← Flush pour que les suppressions soient effectives
+        
+        # ✅ Réinitialiser la relation items pour éviter les références fantômes
+            document.items = []
+        
+        # Créer les nouveaux items
+            for item_data in items:
+                item = DocumentItem(
+                    description=item_data["description"],
+                    quantity=item_data.get("quantity", 1),
+                    unit_price_cents=item_data["unit_price_cents"],
+                    tax_rate=item_data.get("tax_rate", 20),
+                    document_id=document.id,
+                )
+                db.add(item)  
         await db.commit()
-        await db.refresh(document)
+        await db.refresh(document, ['items'])
+        logger.info(f"✅ Document {document.id} mis à jour avec {len(document.items)} items")
         return document
 
     @staticmethod
@@ -150,7 +256,7 @@ class DocumentService:
         if document.status != DocumentStatus.DRAFT:
             raise ValueError("Seuls les brouillons peuvent être supprimés")
         await db.delete(document)
-        await db.commit()
+        await db.flush()  # ← flush() au lieu de commit()
 
     @staticmethod
     async def duplicate_as_invoice(db: AsyncSession, document: Document) -> Document:
@@ -159,9 +265,7 @@ class DocumentService:
             raise ValueError("Seuls les devis peuvent être convertis en facture")
 
         # Recharger avec les items
-        stmt = select(Document).where(Document.id == document.id)
-        result = await db.execute(stmt)
-        doc_with_items = result.scalar_one()
+        await db.refresh(document, ['items'])
 
         items_data = [
             {
@@ -170,7 +274,7 @@ class DocumentService:
                 "unit_price_cents": item.unit_price_cents,
                 "tax_rate": item.tax_rate,
             }
-            for item in doc_with_items.items
+            for item in document.items
         ]
 
         return await DocumentService.create_document(
@@ -179,13 +283,15 @@ class DocumentService:
             user_id=document.user_id,
             client_id=document.client_id,
             items=items_data,
+            layout_style=getattr(document, 'layout_style', 'classic'),
             template_id=document.template_id,
             due_date=document.due_date,
+            notes=document.notes,
         )
 
     @staticmethod
     def calculate_totals(items: list[DocumentItem]) -> dict:
-        """Calcule les totaux d'un document à partir de ses lignes."""
+        """Calcule les totaux d'un document."""
         subtotal_cents = 0
         tax_total_cents = 0
 
@@ -227,20 +333,15 @@ class DocumentService:
         show_tax_id: bool = True,
         reference: Optional[str] = None,
     ) -> str:
-        """
-        Génère un aperçu HTML en temps réel pour l'éditeur.
-        Ne sauvegarde RIEN en DB — crée des objets temporaires en mémoire.
-        Retourne le HTML rendu par Jinja2.
-        """
+        """Génère un aperçu HTML en temps réel."""
         items = items or [{"description": "Exemple", "quantity": 1, "unit_price_cents": 0, "tax_rate": 20}]
 
-        # --- Template ---
+        # Template
         if template_id:
             template = await TemplateService.get_by_id(db, template_id, user.id)
             if not template:
                 template = DocumentService._build_fallback_template(user.id, layout_style)
         else:
-            # Template temporaire avec les couleurs du formulaire
             template = DocumentTemplate(
                 id=uuid4(),
                 name="Aperçu",
@@ -258,7 +359,7 @@ class DocumentService:
                 show_tax_id=show_tax_id,
             )
 
-        # --- Document temporaire ---
+        # Document temporaire
         doc_id = uuid4()
         fake_doc = Document(
             id=doc_id,
@@ -271,7 +372,6 @@ class DocumentService:
             client_id=uuid4(),
         )
 
-        # Items réels du formulaire
         fake_doc.items = [
             DocumentItem(
                 id=uuid4(),
@@ -284,7 +384,7 @@ class DocumentService:
             for item in items
         ]
 
-        # --- Client temporaire ---
+        # Client temporaire
         fake_client = Client(
             id=uuid4(),
             name=client_name,
@@ -294,37 +394,37 @@ class DocumentService:
             user_id=user.id,
         )
 
-        # --- Rendu HTML ---
-        html_content = pdf_renderer.render_html(
+        return pdf_renderer.render_html(
             document=fake_doc,
             template=template,
             user=user,
             client=fake_client,
         )
-        return html_content
 
     @staticmethod
     async def _generate_number(db: AsyncSession, type: DocumentType, user_id: UUID) -> str:
-        """Génère un numéro de document automatique (DEV-2026-001, FACT-2026-001)."""
+        """Génère un numéro automatique."""
         prefix = "DEV" if type == DocumentType.DEVIS else "FACT"
-        year = datetime.now(timezone.utc).year
 
-        # Compter les documents de cette année pour cet utilisateur
+        now_utc = to_naive_utc(datetime.now(timezone.utc))
+        year = now_utc.year
+
         count_stmt = (
             select(func.count(Document.id))
             .where(
                 Document.user_id == user_id,
                 Document.type == type,
+                func.extract('year', Document.created_at) == year,
             )
         )
         result = await db.execute(count_stmt)
         count = result.scalar() or 0
 
         return f"{prefix}-{year}-{count + 1:03d}"
-    
+
     @staticmethod
     def _build_fallback_template(user_id: UUID, layout_style: str = "classic") -> DocumentTemplate:
-        """Construit un template fallback avec les valeurs par défaut."""
+        """Template fallback avec valeurs par défaut."""
         return DocumentTemplate(
             id=uuid4(),
             name="Par défaut",

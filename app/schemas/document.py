@@ -47,12 +47,23 @@ class DocumentCreate(BaseModel):
     """Création d'un document — l'ID peut être fourni par le frontend."""
     id: Optional[UUID] = None  # UUID fourni par le frontend, auto-généré si absent
     type: DocumentType = DocumentType.DEVIS
-    client_id: UUID
-    template_id: Optional[UUID] = None
+    client_id: Optional[UUID] = None
+    
+    layout_style: str = "classic"  # Style prédéfini (modern, classic, etc.)
+    template_id: Optional[UUID] = None  # Template personnalisé (UUID ou None)
     due_date: Optional[datetime] = None
     items: List[DocumentItemCreate]
     notes: Optional[str] = None
 
+
+    @field_validator("layout_style")
+    @classmethod
+    def validate_layout_style(cls, v: str) -> str:
+        valid_layouts = ["modern", "classic", "minimal", "bold", "elegant"]
+        if v not in valid_layouts:
+            raise ValueError(f"Layout invalide. Options: {', '.join(valid_layouts)}")
+        return v
+    
     @field_validator("items")
     @classmethod
     def items_must_not_be_empty(cls, v: list) -> list:
@@ -72,7 +83,7 @@ class DocumentRead(BaseModel):
     viewed_at: Optional[datetime] = None
     user_id: UUID
     client_id: UUID
-    template_id: Optional[UUID] = None
+    template_id: Optional[str] = None
     items: List[DocumentItemRead] = []
     notes: Optional[str] = None
 
@@ -87,10 +98,21 @@ class DocumentRead(BaseModel):
 class DocumentUpdate(BaseModel):
     """Mise à jour complète d'un document (items, client, template...)."""
     client_id: Optional[UUID] = None
-    template_id: Optional[UUID] = None
+    template_id: Optional[str] = None
+    layout_style: Optional[str] = None 
     due_date: Optional[datetime] = None
     items: Optional[List[DocumentItemCreate]] = None
     notes: Optional[str] = None
+
+    @field_validator("layout_style")
+    @classmethod
+    def validate_layout_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid_layouts = ["modern", "classic", "minimal", "bold", "elegant"]
+        if v not in valid_layouts:
+            raise ValueError(f"Layout invalide. Options: {', '.join(valid_layouts)}")
+        return v
 
 
 class DocumentStatusUpdate(BaseModel):
@@ -146,7 +168,7 @@ class DocumentListRead(BaseModel):
     sent_at: Optional[datetime] = None
     viewed_at: Optional[datetime] = None
     client_id: UUID
-    template_id: Optional[UUID] = None
+    template_id: Optional[str] = None
     grand_total_cents: Optional[int] = None
 
     model_config = {"from_attributes": True}

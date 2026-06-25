@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.pdfRenderer import pdf_renderer
 from uuid import UUID
 from typing import Optional
 from app.db.engine import get_db
@@ -9,7 +10,6 @@ from app.models.user import User
 from app.models.document import DocumentType, DocumentStatus
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
-from app.services.pdfRenderer import pdf_renderer
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -18,13 +18,18 @@ from app.schemas.document import (
     DocumentListRead,
     DocumentPreviewRequest,
 )
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models.document import Document
+
+import logging
 
 router = APIRouter(tags=["documents"])
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# 📄 LIVE PREVIEW (éditeur temps réel — pas de sauvegarde DB)
-# ⚠️ DOIT ÊTRE AVANT /{document_id} sinon conflit de routage
+# 📄 LIVE PREVIEW (pas de sauvegarde DB) - DOIT ÊTRE EN PREMIER
 # ============================================================
 
 @router.post("/preview", response_class=HTMLResponse)
@@ -33,23 +38,18 @@ async def preview_document_live(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Aperçu HTML en temps réel pour l'éditeur de devis/factures.
-    Ne sauvegarde RIEN en DB — rend juste le HTML avec les données du formulaire.
-    """
-    # Convertir type string → DocumentType enum
+    """Aperçu HTML en temps réel."""
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
     except ValueError:
         doc_type = DocumentType.DEVIS
 
-    # Convertir template_id string → UUID (ou None)
     template_uuid = None
     if preview_data.template_id:
         try:
             template_uuid = UUID(preview_data.template_id)
         except ValueError:
-            template_uuid = None  # ID invalide → on ignore, fallback template
+            template_uuid = None
 
     html_content = await DocumentService.render_preview(
         db=db,
@@ -83,17 +83,14 @@ async def preview_document_pdf(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Génère un PDF à partir des données du formulaire (sans sauvegarder en DB).
-    Utilisé pour le bouton "Télécharger PDF" dans l'éditeur.
-    """
-    # Convertir type string → DocumentType enum
+    """Génère un PDF sans sauvegarder en DB (Playwright)."""
+    logger.info(f"📄 POST /preview/pdf - layout_style: {preview_data.layout_style}")
+    
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
     except ValueError:
         doc_type = DocumentType.DEVIS
 
-    # Convertir template_id string → UUID (ou None)
     template_uuid = None
     if preview_data.template_id:
         try:
@@ -125,15 +122,8 @@ async def preview_document_pdf(
         reference=preview_data.reference,
     )
 
-    # Générer le PDF à partir du HTML
-    from io import BytesIO
-    from weasyprint import HTML as WeasyHTML
-    pdf_buffer = BytesIO()
-    WeasyHTML(string=html_content).write_pdf(
-        pdf_buffer,
-        presentational_hints=True,
-    )
-    pdf_buffer.seek(0)
+    # ✅ CORRECTION : Utiliser render_pdf_from_html au lieu de render_preview_html
+    pdf_buffer = await pdf_renderer.render_pdf_from_html(html_content)
 
     prefix = "DEV" if doc_type == DocumentType.DEVIS else "FACT"
     filename = f"{preview_data.reference or prefix + '-Brouillon'}.pdf"
@@ -144,137 +134,81 @@ async def preview_document_pdf(
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
         },
     )
 
 
-def _enrich_document(doc, totals: dict) -> dict:
-    """Ajoute les totaux calculés au document pour le schema de retour."""
-    data = {
-        "id": doc.id,
-        "type": doc.type,
-        "status": doc.status,
-        "number": doc.number,
-        "created_at": doc.created_at,
-        "due_date": doc.due_date,
-        "user_id": doc.user_id,
-        "client_id": doc.client_id,
-        "template_id": doc.template_id,
-        "items": doc.items,
-        "notes": doc.notes,
-        "subtotal_cents": totals["subtotal_cents"],
-        "tax_total_cents": totals["tax_total_cents"],
-        "grand_total_cents": totals["grand_total_cents"],
-    }
-    return data
+# ============================================================
+# 📄 PDF & PREVIEW pour documents sauvegardés
+# ============================================================
 
-
-async def _get_document_template(db: AsyncSession, document, user: User):
-    """Récupère le template du document, ou le template par défaut, ou en crée un fallback."""
-    if document.template_id:
-        tmpl = await TemplateService.get_by_id(db, document.template_id, user.id)
-        if tmpl:
-            return tmpl
-
-    # Template par défaut de l'utilisateur
-    default_tmpl = await TemplateService.get_default(db, user.id)
-    if default_tmpl:
-        return default_tmpl
-
-    # Fallback : template minimal en mémoire
-    from app.models.document_template import DocumentTemplate
-    return DocumentTemplate(
-        name="Par defaut",
-        user_id=user.id,
-        primary_color="#2563EB",
-        secondary_color="#1E40AF",
-        accent_color="#DBEAFE",
-        text_color="#1F2937",
-        background_color="#FFFFFF",
-        font_family="Inter",
-        layout_style="classic",
-        show_bank_details=True,
-        show_tax_id=True,
-        is_default=True,
-    )
-
-
-@router.post("/", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
-async def create_document(
-    document_data: DocumentCreate,
+@router.get("/{document_id}/pdf")
+async def get_document_pdf(
+    document_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Créer un nouveau devis ou facture. L'ID peut être fourni par le frontend."""
+    """Générer le PDF d'un document sauvegardé."""
+    logger.info(f"📄 GET /{document_id}/pdf - layout_style: {getattr(document_id, 'layout_style', 'unknown')}")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
     from app.services.clientService import ClientService
-    client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client introuvable",
-        )
+        raise HTTPException(status_code=404, detail="Client introuvable")
 
-    try:
-        document = await DocumentService.create_document(
-            db=db,
-            type=document_data.type,
-            user_id=current_user.id,
-            client_id=document_data.client_id,
-            items=[item.model_dump() for item in document_data.items],
-            document_id=document_data.id,  # ← UUID du frontend
-            template_id=document_data.template_id,
-            due_date=document_data.due_date,
-            notes=document_data.notes,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+    template = await _get_document_template(db, document, current_user)
+    
+    logger.info(f"📄 Template layout_style: {template.layout_style}")
 
-    totals = DocumentService.calculate_totals(document.items)
-    return _enrich_document(document, totals)
+    pdf_buffer = await pdf_renderer.render_pdf(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
+    )
+
+    filename = f"{document.number or 'document'}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )
 
 
-@router.get("/", response_model=list[DocumentListRead])
-async def list_documents(
-    type: Optional[DocumentType] = Query(None, description="Filtrer par type"),
-    status: Optional[DocumentStatus] = Query(None, description="Filtrer par statut"),
-    client_id: Optional[UUID] = Query(None, description="Filtrer par client"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+@router.get("/{document_id}/preview", response_class=HTMLResponse)
+async def preview_document(
+    document_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Liste les documents avec filtres et pagination."""
-    documents = await DocumentService.get_all(
-        db=db,
-        user_id=current_user.id,
-        type=type,
-        status=status,
-        client_id=client_id,
-        skip=skip,
-        limit=limit,
+    """Aperçu HTML d'un document sauvegardé."""
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    from app.services.clientService import ClientService
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+
+    template = await _get_document_template(db, document, current_user)
+
+    html_content = pdf_renderer.render_html(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
     )
+    return HTMLResponse(content=html_content)
 
-    result = []
-    for doc in documents:
-        totals = DocumentService.calculate_totals(doc.items)
-        result.append({
-            "id": doc.id,
-            "type": doc.type,
-            "status": doc.status,
-            "number": doc.number,
-            "created_at": doc.created_at,
-            "due_date": doc.due_date,
-            "client_id": doc.client_id,
-            "template_id": doc.template_id,
-            "grand_total_cents": totals["grand_total_cents"],
-        })
-    return result
 
+# ============================================================
+# 📄 CRUD DOCUMENTS
+# ============================================================
 
 @router.get("/{document_id}", response_model=DocumentRead)
 async def get_document(
@@ -282,9 +216,12 @@ async def get_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Récupérer les détails complets d'un document avec totaux."""
+    """Récupérer les détails d'un document."""
+    logger.info(f"🔍 GET /{document_id} - user: {current_user.id}")
+    
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
+        logger.warning(f"⚠️ Document {document_id} non trouvé pour user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document introuvable",
@@ -301,7 +238,21 @@ async def update_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mise à jour complète d'un document (client, items, template, notes...)."""
+    """Mise à jour complète d'un document."""
+    logger.info(f"🔄 PUT /{document_id} - user: {current_user.id}")
+    logger.info(f"📦 Payload: {document_data.model_dump(exclude_unset=True)}")
+    
+    debug_stmt = select(Document).where(Document.id == document_id)
+    debug_result = await db.execute(debug_stmt)
+    debug_doc = debug_result.scalar_one_or_none()
+    
+    if debug_doc:
+        logger.info(f"✅ Document existe en DB, owner: {debug_doc.user_id}")
+        if debug_doc.user_id != current_user.id:
+            logger.warning(f"⚠️ Document appartient à un autre user: {debug_doc.user_id}")
+    else:
+        logger.warning(f"❌ Document {document_id} n'existe PAS en DB")
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(
@@ -309,7 +260,6 @@ async def update_document(
             detail="Document introuvable",
         )
 
-    # Vérifier le client si fourni
     if document_data.client_id is not None:
         from app.services.clientService import ClientService
         client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
@@ -325,6 +275,7 @@ async def update_document(
             document=document,
             client_id=document_data.client_id,
             template_id=document_data.template_id,
+            layout_style=document_data.layout_style,
             due_date=document_data.due_date,
             items=[item.model_dump() for item in document_data.items] if document_data.items else None,
             notes=document_data.notes,
@@ -346,7 +297,7 @@ async def update_document_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Changer le statut d'un document (DRAFT→SENT→PAID)."""
+    """Changer le statut d'un document."""
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(
@@ -376,7 +327,7 @@ async def convert_to_invoice(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Convertir un devis en facture (duplique avec nouveau numéro)."""
+    """Convertir un devis en facture."""
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(
@@ -420,87 +371,140 @@ async def delete_document(
 
 
 # ============================================================
-# 📄 ENDPOINTS PDF & PREVIEW
+# 📄 LISTE ET CRÉATION
 # ============================================================
 
-@router.get("/{document_id}/pdf")
-async def get_document_pdf(
-    document_id: UUID,
+@router.get("/", response_model=list[DocumentListRead])
+async def list_documents(
+    type: Optional[DocumentType] = Query(None),
+    status: Optional[DocumentStatus] = Query(None),
+    client_id: Optional[UUID] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Générer et télécharger le PDF d'un document."""
-    document = await DocumentService.get_by_id(db, document_id, current_user.id)
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document introuvable",
-        )
+    """Liste les documents."""
+    documents = await DocumentService.get_all(
+        db=db,
+        user_id=current_user.id,
+        type=type,
+        status=status,
+        client_id=client_id,
+        skip=skip,
+        limit=limit,
+    )
 
-    # Récupérer le client
+    result = []
+    for doc in documents:
+        totals = DocumentService.calculate_totals(doc.items)
+        result.append({
+            "id": doc.id,
+            "type": doc.type,
+            "status": doc.status,
+            "number": doc.number,
+            "created_at": doc.created_at,
+            "due_date": doc.due_date,
+            "client_id": doc.client_id,
+            "template_id": doc.template_id,
+            "layout_style": getattr(doc, 'layout_style', 'classic'),
+            "grand_total_cents": totals["grand_total_cents"],
+        })
+    return result
+
+
+@router.post("/", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+async def create_document(
+    document_data: DocumentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Créer un nouveau devis ou facture."""
+    logger.info(f"✨ POST / - Création document, id: {document_data.id}, layout: {document_data.layout_style}")
+    
     from app.services.clientService import ClientService
-    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Client introuvable",
         )
 
-    # Récupérer le template
-    template = await _get_document_template(db, document, current_user)
-
-    # Générer le PDF
-    pdf_buffer = pdf_renderer.render_pdf(
-        document=document,
-        template=template,
-        user=current_user,
-        client=client,
-    )
-
-    filename = f"{document.number or 'document'}.pdf"
-    return StreamingResponse(
-        pdf_buffer,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"inline; filename={filename}",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
-
-
-@router.get("/{document_id}/preview", response_class=HTMLResponse)
-async def preview_document(
-    document_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Aperçu HTML d'un document (pour iframe dans le frontend)."""
-    document = await DocumentService.get_by_id(db, document_id, current_user.id)
-    if not document:
+    try:
+        document = await DocumentService.create_document(
+            db=db,
+            type=document_data.type,
+            user_id=current_user.id,
+            client_id=document_data.client_id,
+            items=[item.model_dump() for item in document_data.items],
+            layout_style=document_data.layout_style,
+            template_id=document_data.template_id,
+            due_date=document_data.due_date,
+            notes=document_data.notes,
+            document_id=document_data.id,
+        )
+        logger.info(f"✅ Document créé avec succès: {document.id}")
+    except ValueError as e:
+        logger.error(f"❌ Erreur création: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document introuvable",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
-    # Récupérer le client
-    from app.services.clientService import ClientService
-    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client introuvable",
-        )
+    totals = DocumentService.calculate_totals(document.items)
+    return _enrich_document(document, totals)
 
-    # Récupérer le template
-    template = await _get_document_template(db, document, current_user)
 
-    # Rendre le HTML
-    html_content = pdf_renderer.render_html(
-        document=document,
-        template=template,
-        user=current_user,
-        client=client,
+# ============================================================
+# 📄 HELPERS
+# ============================================================
+
+def _enrich_document(doc, totals: dict) -> dict:
+    """Ajoute les totaux calculés au document."""
+    return {
+        "id": doc.id,
+        "type": doc.type,
+        "status": doc.status,
+        "number": doc.number,
+        "created_at": doc.created_at,
+        "due_date": doc.due_date,
+        "user_id": doc.user_id,
+        "client_id": doc.client_id,
+        "template_id": doc.template_id,
+        "layout_style": getattr(doc, 'layout_style', 'classic'),
+        "notes": doc.notes,
+        "items": doc.items,
+        "subtotal_cents": totals["subtotal_cents"],
+        "tax_total_cents": totals["tax_total_cents"],
+        "grand_total_cents": totals["grand_total_cents"],
+    }
+
+
+async def _get_document_template(db: AsyncSession, document, user: User):
+    """Récupère le template du document."""
+    if document.template_id:
+        tmpl = await TemplateService.get_by_id(db, document.template_id, user.id)
+        if tmpl:
+            return tmpl
+
+    default_tmpl = await TemplateService.get_default(db, user.id)
+    if default_tmpl:
+        return default_tmpl
+
+    from app.models.document_template import DocumentTemplate
+    from uuid import uuid4
+    return DocumentTemplate(
+        id=uuid4(),
+        name=f"Template {getattr(document, 'layout_style', 'classic')}",
+        user_id=user.id,
+        primary_color="#2563EB",
+        layout_style=getattr(document, 'layout_style', 'classic'),
+        secondary_color="#1E40AF",
+        accent_color="#DBEAFE",
+        text_color="#1F2937",
+        background_color="#FFFFFF",
+        font_family="Inter",
+        show_bank_details=True,
+        show_tax_id=True,
+        is_default=True,
     )
-    return HTMLResponse(content=html_content)

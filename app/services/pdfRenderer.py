@@ -36,7 +36,6 @@ class PDFRenderer:
             autoescape=True,
             cache_size=100,
         )
-        # Cache pour les previews (clé = layout_id)
         self._preview_cache: dict[str, bytes] = {}
 
     def _get_layout_file(self, layout_style: str) -> str:
@@ -118,7 +117,6 @@ class PDFRenderer:
         currency: str = None,
     ) -> str:
         """Rend un aperçu HTML avec des FAUSSES données."""
-        # Utiliser le user fourni ou le mock
         if user is None:
             user = self._get_mock_user()
 
@@ -131,7 +129,7 @@ class PDFRenderer:
             due_date=datetime.now(timezone.utc),
             user_id=user.id,
             client_id=uuid4(),
-            template_id=template.id,
+            template_id=None,
         )
 
         fake_client = Client(
@@ -216,13 +214,11 @@ class PDFRenderer:
     ) -> bytes:
         """Génère une image PNG d'aperçu du template (PUBLIC - sans user)."""
         
-        # Vérifier le cache (clé = layout_id uniquement)
         if layout_style in self._preview_cache:
             logger.info(f"Preview {layout_style} servi depuis le cache")
             return self._preview_cache[layout_style]
 
         try:
-            # Créer un template mock
             mock_template = DocumentTemplate(
                 id=uuid4(),
                 name=f"Template {layout_style}",
@@ -234,17 +230,14 @@ class PDFRenderer:
                 show_bank_details=True,
             )
 
-            # Générer le HTML (user optionnel, sera mocké)
             html_string = self.render_preview_html(
                 template=mock_template,
-                user=None,  # Pas de user, sera mocké
+                user=None,
                 currency=currency,
             )
 
-            # Générer le PNG
             screenshot = await self._generate_screenshot(html_string)
 
-            # Stocker dans le cache
             self._preview_cache[layout_style] = screenshot
             logger.info(f"Preview {layout_style} généré et mis en cache")
 
@@ -252,6 +245,35 @@ class PDFRenderer:
 
         except Exception as e:
             logger.error(f"Erreur génération preview PNG: {e}", exc_info=True)
+            raise
+
+    async def render_pdf_from_html(self, html_string: str) -> BytesIO:
+        """Génère un PDF directement depuis une chaîne HTML."""
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
+                page = await browser.new_page()
+                
+                await page.set_content(html_string, wait_until="domcontentloaded")
+                await page.wait_for_timeout(500)
+                
+                pdf_bytes = await page.pdf(
+                    format="A4",
+                    print_background=True,
+                    margin={"top": "15mm", "right": "20mm", "bottom": "15mm", "left": "20mm"}
+                )
+                
+                await browser.close()
+                
+                pdf_buffer = BytesIO(pdf_bytes)
+                pdf_buffer.seek(0)
+                return pdf_buffer
+                
+        except Exception as e:
+            logger.error(f"Erreur génération PDF depuis HTML: {e}", exc_info=True)
             raise
 
     async def render_pdf(
