@@ -57,6 +57,15 @@ class Document(SQLModel, table=True):
     )
     template: Optional["DocumentTemplate"] = Relationship(back_populates="documents")
 
+    primary_color: Optional[str] = Field(default="#2563EB")
+    secondary_color: Optional[str] = Field(default="#1E40AF")
+    accent_color: Optional[str] = Field(default="#DBEAFE")
+    background_color: Optional[str] = Field(default="#FFFFFF")
+    text_color: Optional[str] = Field(default="#1F2937")
+    font_family: Optional[str] = Field(default="Inter")
+    show_bank_details: bool = Field(default=True)
+    show_tax_id: bool = Field(default=True)
+
     # === Lignes du document ===
     items: List["DocumentItem"] = Relationship(back_populates="document")
 

@@ -1,3 +1,5 @@
+# app/schemas/document.py
+
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from uuid import UUID
@@ -44,26 +46,34 @@ class DocumentItemRead(BaseModel):
 
 
 class DocumentCreate(BaseModel):
-    """Création d'un document — l'ID peut être fourni par le frontend."""
-    id: Optional[UUID] = None  # UUID fourni par le frontend, auto-généré si absent
+    """Création d'un document."""
+    id: Optional[UUID] = None
     type: DocumentType = DocumentType.DEVIS
-    client_id: Optional[UUID] = None
-    
-    layout_style: str = "classic"  # Style prédéfini (modern, classic, etc.)
-    template_id: Optional[UUID] = None  # Template personnalisé (UUID ou None)
+    client_id: UUID
+    layout_style: str = "classic"
+    template_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
     items: List[DocumentItemCreate]
     notes: Optional[str] = None
-
+    
+    # ✅ Champs de style
+    primary_color: Optional[str] = "#2563EB"
+    secondary_color: Optional[str] = "#1E40AF"
+    accent_color: Optional[str] = "#DBEAFE"
+    background_color: Optional[str] = "#FFFFFF"
+    text_color: Optional[str] = "#1F2937"
+    font_family: Optional[str] = "Inter"
+    show_bank_details: Optional[bool] = True
+    show_tax_id: Optional[bool] = True
 
     @field_validator("layout_style")
     @classmethod
-    def validate_layout_style(cls, v: str) -> str:
+    def validate_layout_style(cls, v: Optional[str]) -> Optional[str]:
         valid_layouts = ["modern", "classic", "minimal", "bold", "elegant"]
-        if v not in valid_layouts:
+        if v and v not in valid_layouts:
             raise ValueError(f"Layout invalide. Options: {', '.join(valid_layouts)}")
-        return v
-    
+        return v or "classic"
+
     @field_validator("items")
     @classmethod
     def items_must_not_be_empty(cls, v: list) -> list:
@@ -83,10 +93,21 @@ class DocumentRead(BaseModel):
     viewed_at: Optional[datetime] = None
     user_id: UUID
     client_id: UUID
-    template_id: Optional[str] = None
+    template_id: Optional[UUID] = None
+    layout_style: str = "classic"
     items: List[DocumentItemRead] = []
     notes: Optional[str] = None
-    layout_style: Optional[str] = None
+    
+    # ✅ Champs de style
+    primary_color: Optional[str] = "#2563EB"
+    secondary_color: Optional[str] = "#1E40AF"
+    accent_color: Optional[str] = "#DBEAFE"
+    background_color: Optional[str] = "#FFFFFF"
+    text_color: Optional[str] = "#1F2937"
+    font_family: Optional[str] = "Inter"
+    show_bank_details: bool = True
+    show_tax_id: bool = True
+
     # Totaux calculés
     subtotal_cents: Optional[int] = None
     tax_total_cents: Optional[int] = None
@@ -96,13 +117,23 @@ class DocumentRead(BaseModel):
 
 
 class DocumentUpdate(BaseModel):
-    """Mise à jour complète d'un document (items, client, template...)."""
+    """Mise à jour complète d'un document."""
     client_id: Optional[UUID] = None
-    template_id: Optional[str] = None
-    layout_style: Optional[str] = None 
+    template_id: Optional[UUID] = None
+    layout_style: Optional[str] = None
     due_date: Optional[datetime] = None
     items: Optional[List[DocumentItemCreate]] = None
     notes: Optional[str] = None
+    
+    # ✅ NOUVEAU : Champs de style/couleurs
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    background_color: Optional[str] = None
+    text_color: Optional[str] = None
+    font_family: Optional[str] = None
+    show_bank_details: Optional[bool] = None
+    show_tax_id: Optional[bool] = None
 
     @field_validator("layout_style")
     @classmethod
@@ -120,7 +151,6 @@ class DocumentStatusUpdate(BaseModel):
 
 
 class DocumentPreviewItem(BaseModel):
-    """Ligne d'article pour l'aperçu en temps réel."""
     description: str = ""
     quantity: int = 1
     unit_price_cents: int = 0
@@ -128,19 +158,12 @@ class DocumentPreviewItem(BaseModel):
 
 
 class DocumentPreviewRequest(BaseModel):
-    """Données pour l'aperçu en temps réel (pas de sauvegarde en DB).
-    Validation permissive : l'utilisateur est en train d'éditer,
-    les champs peuvent être vides ou incomplets.
-    """
     type: Optional[str] = "DEVIS"
-    # Client
     client_name: str = "Client Exemple"
     client_email: str = ""
     client_address: str = ""
     client_phone: str = ""
-    # Articles
     items: List[DocumentPreviewItem] = []
-    # Template
     template_id: Optional[str] = None
     layout_style: str = "classic"
     primary_color: str = "#2563EB"
@@ -153,7 +176,6 @@ class DocumentPreviewRequest(BaseModel):
     footer_text: Optional[str] = None
     show_bank_details: bool = True
     show_tax_id: bool = True
-    # Méta
     notes: Optional[str] = None
     reference: Optional[str] = None
 
@@ -168,7 +190,8 @@ class DocumentListRead(BaseModel):
     sent_at: Optional[datetime] = None
     viewed_at: Optional[datetime] = None
     client_id: UUID
-    template_id: Optional[str] = None
+    template_id: Optional[UUID] = None
+    layout_style: str = "classic"
     grand_total_cents: Optional[int] = None
-    layout_style: Optional[str] = None
+
     model_config = {"from_attributes": True}

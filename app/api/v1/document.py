@@ -240,35 +240,17 @@ async def update_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Mise à jour complète d'un document."""
-    logger.info(f"🔄 PUT /{document_id} - user: {current_user.id}")
-    logger.info(f"📦 Payload: {document_data.model_dump(exclude_unset=True)}")
+    logger.info(f"🔄 PUT /{document_id}")
     
-    debug_stmt = select(Document).where(Document.id == document_id)
-    debug_result = await db.execute(debug_stmt)
-    debug_doc = debug_result.scalar_one_or_none()
-    
-    if debug_doc:
-        logger.info(f"✅ Document existe en DB, owner: {debug_doc.user_id}")
-        if debug_doc.user_id != current_user.id:
-            logger.warning(f"⚠️ Document appartient à un autre user: {debug_doc.user_id}")
-    else:
-        logger.warning(f"❌ Document {document_id} n'existe PAS en DB")
-
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document introuvable",
-        )
+        raise HTTPException(status_code=404, detail="Document introuvable")
 
     if document_data.client_id is not None:
         from app.services.clientService import ClientService
         client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
         if not client:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Client introuvable",
-            )
+            raise HTTPException(status_code=404, detail="Client introuvable")
 
     try:
         updated = await DocumentService.update_document(
@@ -280,12 +262,18 @@ async def update_document(
             due_date=document_data.due_date,
             items=[item.model_dump() for item in document_data.items] if document_data.items else None,
             notes=document_data.notes,
+            # ✅ NOUVEAU : Passer les champs de style
+            primary_color=document_data.primary_color,
+            secondary_color=document_data.secondary_color,
+            accent_color=document_data.accent_color,
+            background_color=document_data.background_color,
+            text_color=document_data.text_color,
+            font_family=document_data.font_family,
+            show_bank_details=document_data.show_bank_details,
+            show_tax_id=document_data.show_tax_id,
         )
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=400, detail=str(e))
 
     totals = DocumentService.calculate_totals(updated.items)
     return _enrich_document(updated, totals)
@@ -517,6 +505,16 @@ def _enrich_document(doc, totals: dict) -> dict:
         "layout_style": getattr(doc, 'layout_style', 'classic'),
         "notes": doc.notes,
         "items": doc.items,
+        # ✅ NOUVEAU : Retourner les couleurs
+        "primary_color": getattr(doc, 'primary_color', '#2563EB'),
+        "secondary_color": getattr(doc, 'secondary_color', '#1E40AF'),
+        "accent_color": getattr(doc, 'accent_color', '#DBEAFE'),
+        "background_color": getattr(doc, 'background_color', '#FFFFFF'),
+        "text_color": getattr(doc, 'text_color', '#1F2937'),
+        "font_family": getattr(doc, 'font_family', 'Inter'),
+        "show_bank_details": getattr(doc, 'show_bank_details', True),
+        "show_tax_id": getattr(doc, 'show_tax_id', True),
+        # Totaux
         "subtotal_cents": totals["subtotal_cents"],
         "tax_total_cents": totals["tax_total_cents"],
         "grand_total_cents": totals["grand_total_cents"],

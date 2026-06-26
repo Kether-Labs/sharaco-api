@@ -203,13 +203,22 @@ class DocumentService:
     @staticmethod
     async def update_document(
         db: AsyncSession,
-        document: Document,
-        client_id: Optional[UUID] = None,
-        template_id: Optional[UUID] = None,
-        layout_style: Optional[str] = None,  # ← AJOUTÉ
-        due_date: Optional[datetime] = None,
-        items: Optional[list[dict]] = None,
-        notes: Optional[str] = None,
+    document: Document,
+    client_id: Optional[UUID] = None,
+    template_id: Optional[UUID] = None,
+    layout_style: Optional[str] = None,
+    due_date: Optional[datetime] = None,
+    items: Optional[list[dict]] = None,
+    notes: Optional[str] = None,
+    # ✅ NOUVEAU : Champs de style
+    primary_color: Optional[str] = None,
+    secondary_color: Optional[str] = None,
+    accent_color: Optional[str] = None,
+    background_color: Optional[str] = None,
+    text_color: Optional[str] = None,
+    font_family: Optional[str] = None,
+    show_bank_details: Optional[bool] = None,
+    show_tax_id: Optional[bool] = None,
     ) -> Document:
         """Met à jour un document."""
         logger.info(f"🔄 update_document appelé pour {document.id}")
@@ -225,6 +234,23 @@ class DocumentService:
             document.due_date = to_naive_utc(due_date)
         if notes is not None:
             document.notes = notes
+
+        if primary_color is not None:
+            document.primary_color = primary_color
+        if secondary_color is not None:
+            document.secondary_color = secondary_color
+        if accent_color is not None:
+            document.accent_color = accent_color
+        if background_color is not None:
+            document.background_color = background_color
+        if text_color is not None:
+            document.text_color = text_color
+        if font_family is not None:
+            document.font_family = font_family
+        if show_bank_details is not None:
+            document.show_bank_details = show_bank_details
+        if show_tax_id is not None:
+            document.show_tax_id = show_tax_id
 
         if items is not None:
         # Supprimer les anciens items
