@@ -12,3 +12,5 @@ class Client(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="user.id")
     owner: "User" = Relationship(back_populates="clients")
     documents: List["Document"] = Relationship(back_populates="client")
+
+    projects: List["Project"] = Relationship(back_populates="client")

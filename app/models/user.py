@@ -16,3 +16,5 @@ class User(SQLModel, table=True):
     documents: List["Document"] = Relationship(back_populates="owner")
     templates: List["DocumentTemplate"] = Relationship(back_populates="owner")
     reminder_configs: List["ReminderConfig"] = Relationship(back_populates="owner")
+
+    projects: List["Project"] = Relationship(back_populates="owner")

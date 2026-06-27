@@ -57,6 +57,13 @@ class Document(SQLModel, table=True):
     )
     template: Optional["DocumentTemplate"] = Relationship(back_populates="documents")
 
+    project_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="project.id",
+        description="Projet associé (null si document hors projet)"
+    )
+    project: Optional["Project"] = Relationship(back_populates="documents")
+    
     primary_color: Optional[str] = Field(default="#2563EB")
     secondary_color: Optional[str] = Field(default="#1E40AF")
     accent_color: Optional[str] = Field(default="#DBEAFE")
