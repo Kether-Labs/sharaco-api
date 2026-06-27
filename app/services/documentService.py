@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.document import Document, DocumentItem, DocumentType, DocumentStatus
 from app.models.document_template import DocumentTemplate
+from app.models.reminder import ReminderLog
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timezone
@@ -277,12 +278,37 @@ class DocumentService:
         return document
 
     @staticmethod
-    async def delete_document(db: AsyncSession, document: Document) -> None:
-        """Supprime un document (seulement si DRAFT)."""
+    async def delete_document(db: AsyncSession, document_id: UUID, user_id: UUID) -> None:
+    
+    
+    # Charger le document avec toutes ses relations
+        from sqlalchemy.orm import selectinload
+        
+        result = await db.execute(
+            select(Document)
+            .options(
+                selectinload(Document.items),
+                selectinload(Document.reminder_logs),
+                selectinload(Document.views)
+            )
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id
+            )
+        )
+        document = result.scalar_one_or_none()
+        
+        if not document:
+            raise ValueError("Document introuvable")
+        
         if document.status != DocumentStatus.DRAFT:
             raise ValueError("Seuls les brouillons peuvent être supprimés")
+        
+        # ✅ La cascade va supprimer automatiquement items, reminder_logs, views
         await db.delete(document)
-        await db.flush()  # ← flush() au lieu de commit()
+        await db.commit()
+        
+        logger.info(f"✅ Document {document.id} supprimé avec cascade")
 
     @staticmethod
     async def duplicate_as_invoice(db: AsyncSession, document: Document) -> Document:

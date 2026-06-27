@@ -342,22 +342,14 @@ async def delete_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Supprimer un document (uniquement si DRAFT)."""
-    document = await DocumentService.get_by_id(db, document_id, current_user.id)
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document introuvable",
-        )
-
+    """Supprimer un document."""
     try:
-        await DocumentService.delete_document(db, document)
+        await DocumentService.delete_document(db, document_id, current_user.id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-
 
 # ============================================================
 # 📄 LISTE ET CRÉATION
@@ -451,22 +443,47 @@ async def create_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Créer un nouveau devis ou facture."""
-    logger.info(f"✨ POST / - Création document, id: {document_data.id}, layout: {document_data.layout_style}")
+    logger.info(f"✨ POST / - Création document, layout: {document_data.layout_style}")
     
     from app.services.clientService import ClientService
-    client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client introuvable",
+    from app.models.client import Client
+    from sqlalchemy import select
+    
+    # ✅ Si client_id non fourni, prendre le premier client de l'utilisateur
+    client_id = document_data.client_id
+    
+    if not client_id:
+        # Récupérer le premier client de l'utilisateur
+        result = await db.execute(
+            select(Client)
+            .where(Client.user_id == current_user.id)
+            .limit(1)
         )
+        first_client = result.scalar_one_or_none()
+        
+        if not first_client:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Aucun client trouvé. Veuillez créer un client avant de créer un devis."
+            )
+        
+        client_id = first_client.id
+        logger.info(f"📋 Premier client utilisé automatiquement: {first_client.name} ({first_client.id})")
+    else:
+        # Vérifier que le client fourni appartient à l'utilisateur
+        client = await ClientService.get_by_id(db, client_id, current_user.id)
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client introuvable ou n'appartient pas à cet utilisateur"
+            )
 
     try:
         document = await DocumentService.create_document(
             db=db,
             type=document_data.type,
             user_id=current_user.id,
-            client_id=document_data.client_id,
+            client_id=client_id,
             items=[item.model_dump() for item in document_data.items],
             layout_style=document_data.layout_style,
             template_id=document_data.template_id,

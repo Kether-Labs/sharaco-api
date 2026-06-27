@@ -49,7 +49,7 @@ class DocumentCreate(BaseModel):
     """Création d'un document."""
     id: Optional[UUID] = None
     type: DocumentType = DocumentType.DEVIS
-    client_id: UUID
+    client_id: Optional[UUID] = None
     layout_style: str = "classic"
     template_id: Optional[UUID] = None
     due_date: Optional[datetime] = None

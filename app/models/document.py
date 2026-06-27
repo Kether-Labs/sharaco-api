@@ -67,11 +67,20 @@ class Document(SQLModel, table=True):
     show_tax_id: bool = Field(default=True)
 
     # === Lignes du document ===
-    items: List["DocumentItem"] = Relationship(back_populates="document")
+    items: List["DocumentItem"] = Relationship(
+        back_populates="document",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
     # === Relances & Tracking ===
-    reminder_logs: List["ReminderLog"] = Relationship(back_populates="document")
-    views: List["DocumentView"] = Relationship(back_populates="document")
+    reminder_logs: List["ReminderLog"] = Relationship(
+        back_populates="document",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    views: List["DocumentView"] = Relationship(
+        back_populates="document",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class DocumentItem(SQLModel, table=True):
