@@ -1,11 +1,14 @@
 # app/api/v1/project.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from uuid import UUID
 from typing import Optional
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
+from app.models.client import Client
 from app.services.projetService import ProjectService
 from app.schemas.projet import (
     ProjectCreate,
@@ -17,7 +20,7 @@ from app.schemas.projet import (
 )
 import logging
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(tags=["projects"])
 logger = logging.getLogger(__name__)
 
 
@@ -46,7 +49,23 @@ async def create_project(
         logger.error(f"❌ Erreur création: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     
-    return project
+    stats = await ProjectService.get_project_stats(db, project.id, current_user.id)
+    
+    return {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "status": project.status,
+        "budget_cents": project.budget_cents,
+        "start_date": project.start_date,
+        "end_date": project.end_date,
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
+        "user_id": project.user_id,
+        "client_id": project.client_id,
+        "documents_count": stats["documents_count"],
+        "attachments": [],
+    }
 
 
 @router.get("/", response_model=list[ProjectListRead])
@@ -73,7 +92,6 @@ async def list_projects(
     result = []
     for project in projects:
         # Récupérer le nom du client
-        from app.models.client import Client
         client_result = await db.execute(
             select(Client).where(Client.id == project.client_id)
         )
@@ -113,7 +131,6 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Projet introuvable")
     
-    # Statistiques
     stats = await ProjectService.get_project_stats(db, project.id, current_user.id)
     
     return {
@@ -140,7 +157,7 @@ async def get_project(
                 "user_id": att.user_id,
             }
             for att in project.attachments
-        ],
+        ] if project.attachments else [],
     }
 
 
@@ -199,7 +216,7 @@ async def update_project(
                 "user_id": att.user_id,
             }
             for att in updated.attachments
-        ],
+        ] if updated.attachments else [],
     }
 
 

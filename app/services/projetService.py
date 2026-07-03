@@ -2,8 +2,8 @@
 from sqlmodel import select, func, col
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.models.project import Project, ProjectAttachment, ProjectStatus
-from app.models.document import Document, DocumentType
+from app.models.projet import Project, ProjectAttachment, ProjectStatus
+from app.models.document import Document, DocumentType,DocumentItem
 from app.models.client import Client
 from uuid import UUID
 from typing import Optional, List
@@ -50,10 +50,18 @@ class ProjectService:
         )
         db.add(project)
         await db.flush()
-        await db.refresh(project)
-        
+        result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.attachments),
+            selectinload(Project.documents)
+        )
+        .where(Project.id == project.id)
+    )
+        project_with_relations = result.scalar_one()
+    
         logger.info(f"✅ Projet créé: {project.id} - {project.name}")
-        return project
+        return project_with_relations
     
     @staticmethod
     async def get_by_id(db: AsyncSession, project_id: UUID, user_id: UUID) -> Optional[Project]:
@@ -166,21 +174,29 @@ class ProjectService:
         )
         documents_count = docs_count.scalar() or 0
         
-        # Total facturé
-        invoiced = await db.execute(
-            select(func.sum(Document.grand_total_cents)).where(
+        # ✅ Version optimisée : jointure Document + DocumentItem
+        total_result = await db.execute(
+            select(
+                func.sum(
+                    DocumentItem.quantity * DocumentItem.unit_price_cents + 
+                    (DocumentItem.quantity * DocumentItem.unit_price_cents * DocumentItem.tax_rate / 100)
+                )
+            )
+            .join(Document, DocumentItem.document_id == Document.id)
+            .where(
                 Document.project_id == project_id,
                 Document.user_id == user_id,
                 Document.type == DocumentType.FACTURE,
                 Document.status.in_(["PAID", "SENT", "VIEWED"])
             )
         )
-        total_invoiced_cents = invoiced.scalar() or 0
+        total_invoiced_cents = total_result.scalar() or 0
         
         return {
             "documents_count": documents_count,
-            "total_invoiced_cents": total_invoiced_cents,
+            "total_invoiced_cents": int(total_invoiced_cents),
         }
+    
     
     @staticmethod
     async def add_attachment(
