@@ -17,6 +17,7 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentStatusUpdate,
     DocumentListRead,
+    DocumentProjectLink,
     DocumentPreviewRequest,
 )
 from sqlalchemy import select
@@ -310,6 +311,49 @@ async def update_document_status(
     return _enrich_document(updated, totals)
 
 
+# app/api/v1/document.py
+
+@router.patch("/{document_id}/project", response_model=DocumentRead)
+async def link_document_to_project(
+    document_id: UUID,
+    link_data: DocumentProjectLink,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Associer un document à un projet (ou retirer l'association)."""
+    logger.info(f"🔗 PATCH /documents/{document_id}/project")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    # Vérifier que le projet (si fourni) appartient à l'utilisateur
+    if link_data.project_id:
+        from app.models.projet import Project
+        project_result = await db.execute(
+            select(Project).where(
+                Project.id == link_data.project_id,
+                Project.user_id == current_user.id
+            )
+        )
+        if not project_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=404,
+                detail="Projet introuvable ou n'appartient pas à cet utilisateur"
+            )
+    
+    # Mettre à jour le project_id
+    document.project_id = link_data.project_id
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    
+    logger.info(f"✅ Document {document_id} associé au projet {link_data.project_id}")
+    
+    totals = DocumentService.calculate_totals(document.items)
+    return _enrich_document(document, totals)
+
+
 @router.post("/{document_id}/convert", response_model=DocumentRead)
 async def convert_to_invoice(
     document_id: UUID,
@@ -447,7 +491,7 @@ async def create_document(
     
     from app.services.clientService import ClientService
     from app.models.client import Client
-    from app.models.project import Project
+    from app.models.projet import Project
     
     # Déterminer le client
     client_id = document_data.client_id

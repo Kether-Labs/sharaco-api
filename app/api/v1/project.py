@@ -18,11 +18,94 @@ from app.schemas.projet import (
     ProjectAttachmentCreate,
     ProjectAttachmentRead,
 )
+
+from app.schemas.document import (
+    DocumentRead,
+
+)
+
+from app.models.document import Document, DocumentItem
+from app.services.documentService import DocumentService
 import logging
 
 router = APIRouter(tags=["projects"])
 logger = logging.getLogger(__name__)
 
+
+@router.get("/{project_id}/documents", response_model=list[DocumentRead])
+async def get_project_documents(
+    project_id: UUID,
+    type: Optional[str] = Query(None, description="Filtrer par type (DEVIS, FACTURE)"),
+    status: Optional[str] = Query(None, description="Filtrer par statut"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Récupère tous les documents liés à un projet."""
+    logger.info(f"📄 GET /projects/{project_id}/documents")
+    
+    # Vérifier que le projet appartient à l'utilisateur
+    project = await ProjectService.get_by_id(db, project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    
+    # Récupérer les documents du projet
+    from app.models.document import Document, DocumentType, DocumentStatus
+    
+    query = select(Document).where(
+        Document.project_id == project_id,
+        Document.user_id == current_user.id
+    )
+    
+    if type:
+        try:
+            doc_type = DocumentType(type)
+            query = query.where(Document.type == doc_type)
+        except ValueError:
+            pass
+    
+    if status:
+        try:
+            doc_status = DocumentStatus(status)
+            query = query.where(Document.status == doc_status)
+        except ValueError:
+            pass
+    
+    query = query.order_by(Document.created_at.desc())
+    
+    result = await db.execute(query)
+    documents = result.scalars().all()
+    
+    # Construire la réponse avec les totaux
+    response = []
+    for doc in documents:
+        # Charger les items
+        items_result = await db.execute(
+            select(DocumentItem).where(DocumentItem.document_id == doc.id)
+        )
+        items = items_result.scalars().all()
+        
+        # Calculer les totaux
+        totals = DocumentService.calculate_totals(items)
+        
+        response.append({
+            "id": doc.id,
+            "type": doc.type,
+            "status": doc.status,
+            "number": doc.number,
+            "created_at": doc.created_at,
+            "due_date": doc.due_date,
+            "user_id": doc.user_id,
+            "client_id": doc.client_id,
+            "template_id": doc.template_id,
+            "layout_style": doc.layout_style,
+            "notes": doc.notes,
+            "items": items,
+            "subtotal_cents": totals["subtotal_cents"],
+            "tax_total_cents": totals["tax_total_cents"],
+            "grand_total_cents": totals["grand_total_cents"],
+        })
+    
+    return response
 
 @router.post("/", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
 async def create_project(
