@@ -100,6 +100,7 @@ class DocumentRead(BaseModel):
     layout_style: str = "classic"
     items: List[DocumentItemRead] = []
     notes: Optional[str] = None
+    project_id: Optional[UUID] = None
     
     # ✅ Champs de style
     primary_color: Optional[str] = "#2563EB"
@@ -196,5 +197,5 @@ class DocumentListRead(BaseModel):
     template_id: Optional[UUID] = None
     layout_style: str = "classic"
     grand_total_cents: Optional[int] = None
-
+    project_id: Optional[UUID] = None
     model_config = {"from_attributes": True}

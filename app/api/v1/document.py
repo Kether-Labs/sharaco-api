@@ -353,6 +353,36 @@ async def link_document_to_project(
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
 
+@router.delete("/{document_id}/project", response_model=DocumentRead)
+async def unlink_document_from_project(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dissocier un document de son projet."""
+    logger.info(f" DELETE /documents/{document_id}/project")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Ce document n'est pas associé à un projet"
+        )
+    
+    # Dissocier le document
+    document.project_id = None
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    
+    logger.info(f"✅ Document {document_id} dissocié du projet")
+    
+    totals = DocumentService.calculate_totals(document.items)
+    return _enrich_document(document, totals)
+
 
 @router.post("/{document_id}/convert", response_model=DocumentRead)
 async def convert_to_invoice(
@@ -446,6 +476,7 @@ async def list_documents(
     type: Optional[DocumentType] = Query(None),
     status: Optional[DocumentStatus] = Query(None),
     client_id: Optional[UUID] = Query(None),
+    project_id: Optional[UUID] = Query(None, description="Filtrer par projet"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -458,6 +489,7 @@ async def list_documents(
         type=type,
         status=status,
         client_id=client_id,
+        project_id=project_id,
         skip=skip,
         limit=limit,
     )
@@ -476,6 +508,7 @@ async def list_documents(
             "template_id": doc.template_id,
             "layout_style": doc.layout_style,
             "grand_total_cents": totals["grand_total_cents"],
+            "project_id": getattr(doc, 'project_id', None)
         })
     return result
 
@@ -593,6 +626,7 @@ def _enrich_document(doc, totals: dict) -> dict:
         "layout_style": getattr(doc, 'layout_style', 'classic'),
         "notes": doc.notes,
         "items": doc.items,
+        "project_id": getattr(doc, 'project_id', None),
         # ✅ NOUVEAU : Retourner les couleurs
         "primary_color": getattr(doc, 'primary_color', '#2563EB'),
         "secondary_color": getattr(doc, 'secondary_color', '#1E40AF'),

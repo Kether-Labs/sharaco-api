@@ -158,6 +158,7 @@ class DocumentService:
         type: Optional[DocumentType] = None,
         status: Optional[DocumentStatus] = None,
         client_id: Optional[UUID] = None,
+        project_id: Optional[UUID] = None,
         skip: int = 0,
         limit: int = 50,
     ) -> list[Document]:
@@ -174,6 +175,9 @@ class DocumentService:
             statement = statement.where(Document.status == status)
         if client_id:
             statement = statement.where(Document.client_id == client_id)
+
+        if project_id:
+            statement = statement.where(Document.project_id == project_id)
 
         statement = statement.order_by(Document.created_at.desc()).offset(skip).limit(limit)
         result = await db.execute(statement)

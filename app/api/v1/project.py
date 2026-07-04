@@ -100,6 +100,7 @@ async def get_project_documents(
             "layout_style": doc.layout_style,
             "notes": doc.notes,
             "items": items,
+            "project_id": doc.project_id,
             "subtotal_cents": totals["subtotal_cents"],
             "tax_total_cents": totals["tax_total_cents"],
             "grand_total_cents": totals["grand_total_cents"],
