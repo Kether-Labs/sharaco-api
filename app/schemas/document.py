@@ -1,6 +1,6 @@
 # app/schemas/document.py
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator,Field
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -34,6 +34,9 @@ class DocumentItemCreate(BaseModel):
             raise ValueError("Le taux de TVA doit être entre 0 et 100")
         return v
 
+class DocumentProjectLink(BaseModel):
+    """Associer un document à un projet."""
+    project_id: Optional[UUID] = Field(None, description="ID du projet (null pour retirer l'association)")
 
 class DocumentItemRead(BaseModel):
     id: UUID
@@ -55,7 +58,7 @@ class DocumentCreate(BaseModel):
     due_date: Optional[datetime] = None
     items: List[DocumentItemCreate]
     notes: Optional[str] = None
-    
+    project_id: Optional[UUID] = Field(None, description="ID du projet associé (optionnel)")
     # ✅ Champs de style
     primary_color: Optional[str] = "#2563EB"
     secondary_color: Optional[str] = "#1E40AF"

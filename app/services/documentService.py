@@ -33,6 +33,7 @@ class DocumentService:
         due_date: Optional[datetime] = None,
         notes: Optional[str] = None,
         document_id: Optional[UUID] = None,
+        project_id: Optional[UUID] = None,
     ) -> Document:
         """Crée un document avec layout_style ou template_id."""
         logger.info(f"🔨 create_document appelé avec document_id={document_id}, layout={layout_style}")
@@ -52,6 +53,7 @@ class DocumentService:
                 existing_doc.template_id = template_id
                 existing_doc.due_date = to_naive_utc(due_date)
                 existing_doc.notes = notes
+                existing_doc.project_id = project_id
                 
                 # Supprimer les anciens items
                 for old_item in list(existing_doc.items):
@@ -108,6 +110,7 @@ class DocumentService:
             created_at=now_utc,
             due_date=due_date_utc,
             notes=notes,
+            project_id=project_id
         )
         db.add(document)
         await db.flush()  # ← flush() pour obtenir l'ID, pas commit()

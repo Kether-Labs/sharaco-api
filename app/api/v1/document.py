@@ -447,35 +447,63 @@ async def create_document(
     
     from app.services.clientService import ClientService
     from app.models.client import Client
-    from sqlalchemy import select
+    from app.models.project import Project
     
-    # ✅ Si client_id non fourni, prendre le premier client de l'utilisateur
+    # Déterminer le client
     client_id = document_data.client_id
     
     if not client_id:
-        # Récupérer le premier client de l'utilisateur
-        result = await db.execute(
-            select(Client)
-            .where(Client.user_id == current_user.id)
-            .limit(1)
-        )
-        first_client = result.scalar_one_or_none()
-        
-        if not first_client:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Aucun client trouvé. Veuillez créer un client avant de créer un devis."
+        # Si un projet est fourni, utiliser le client du projet
+        if document_data.project_id:
+            project_result = await db.execute(
+                select(Project).where(
+                    Project.id == document_data.project_id,
+                    Project.user_id == current_user.id
+                )
             )
+            project = project_result.scalar_one_or_none()
+            if project:
+                client_id = project.client_id
+                logger.info(f"📋 Client récupéré depuis le projet: {client_id}")
         
-        client_id = first_client.id
-        logger.info(f"📋 Premier client utilisé automatiquement: {first_client.name} ({first_client.id})")
+        # Sinon, prendre le premier client de l'utilisateur
+        if not client_id:
+            result = await db.execute(
+                select(Client)
+                .where(Client.user_id == current_user.id)
+                .limit(1)
+            )
+            first_client = result.scalar_one_or_none()
+            
+            if not first_client:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Aucun client trouvé. Veuillez créer un client avant de créer un devis."
+                )
+            
+            client_id = first_client.id
+            logger.info(f"📋 Premier client utilisé: {first_client.name}")
     else:
-        # Vérifier que le client fourni appartient à l'utilisateur
+        # Vérifier que le client appartient à l'utilisateur
         client = await ClientService.get_by_id(db, client_id, current_user.id)
         if not client:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Client introuvable ou n'appartient pas à cet utilisateur"
+                detail="Client introuvable"
+            )
+    
+    # ✅ Vérifier que le projet (si fourni) appartient à l'utilisateur
+    if document_data.project_id:
+        project_result = await db.execute(
+            select(Project).where(
+                Project.id == document_data.project_id,
+                Project.user_id == current_user.id
+            )
+        )
+        if not project_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Projet introuvable ou n'appartient pas à cet utilisateur"
             )
 
     try:
@@ -490,14 +518,13 @@ async def create_document(
             due_date=document_data.due_date,
             notes=document_data.notes,
             document_id=document_data.id,
+            # ✅ NOUVEAU : Passer le project_id
+            project_id=document_data.project_id,
         )
-        logger.info(f"✅ Document créé avec succès: {document.id}")
+        logger.info(f"✅ Document créé: {document.id}")
     except ValueError as e:
-        logger.error(f"❌ Erreur création: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        logger.error(f"❌ Erreur: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
 
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
