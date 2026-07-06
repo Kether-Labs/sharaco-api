@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 if settings.RESEND_API_KEY:
     resend.api_key = settings.RESEND_API_KEY
 
-# Configuration Jinja2 pour les templates
+# Templates Jinja2
 EMAIL_TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "emails"
 email_env = Environment(
     loader=FileSystemLoader(str(EMAIL_TEMPLATES_DIR)),
@@ -23,31 +23,94 @@ email_env = Environment(
 class EmailService:
     
     @staticmethod
+    async def _send_via_resend(
+        to_email: str,
+        subject: str,
+        html_content: str,
+    ) -> dict:
+        """Envoie via Resend API."""
+        try:
+            from_email = settings.RESEND_FROM_EMAIL or "Sharaco <onboarding@resend.dev>"
+            
+            logger.info(f"📧 Envoi Resend → {to_email} | From: {from_email}")
+            
+            email_data = {
+                "from": from_email,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            
+            response = await asyncio.to_thread(resend.Emails.send, email_data)
+            
+            email_id = response.get("id") if isinstance(response, dict) else response.id
+            logger.info(f"✅ Email Resend envoyé | ID: {email_id}")
+            return {"success": True, "id": email_id, "provider": "resend"}
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur Resend: {e}", exc_info=True)
+            return {"success": False, "error": str(e), "provider": "resend"}
+    
+    @staticmethod
+    async def _send_via_smtp(
+        to_email: str,
+        subject: str,
+        html_content: str,
+    ) -> dict:
+        """Envoie via SMTP classique."""
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+            
+            msg = MIMEMultipart()
+            msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USER}>"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
+            
+            def _send_sync():
+                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                    server.ehlo()
+                    if settings.SMTP_USE_TLS:
+                        server.starttls()
+                        server.ehlo()
+                    
+                    if settings.SMTP_USER and settings.SMTP_PASSWORD:
+                        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                    
+                    server.sendmail(settings.SMTP_USER, [to_email], msg.as_string())
+            
+            await asyncio.to_thread(_send_sync)
+            logger.info(f"✅ Email SMTP envoyé à {to_email}")
+            return {"success": True, "provider": "smtp"}
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur SMTP: {e}", exc_info=True)
+            return {"success": False, "error": str(e), "provider": "smtp"}
+    
+    @staticmethod
     async def _send_email(
         to_email: str,
         subject: str,
         html_content: str,
     ) -> dict:
-        """Envoie un email via Resend (de manière asynchrone)."""
-        try:
-            params = resend.Emails.SendParams(
-                from_=settings.RESEND_FROM_EMAIL,
-                to=[to_email],
-                subject=subject,
-                html=html_content,
-                # Optionnel : activer le tracking d'ouverture (nécessite un domaine vérifié)
-                # headers={"X-Entity-Ref-ID": "unique_id"} 
-            )
-            
-            # Exécution dans un thread pour ne pas bloquer l'event loop FastAPI
-            response = await asyncio.to_thread(resend.Emails.send, params)
-            
-            logger.info(f"✅ Email envoyé à {to_email} | ID: {response.id}")
-            return {"success": True, "id": response.id}
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur envoi Resend: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+        """Dispatch vers le bon provider selon la config."""
+        if settings.EMAIL_PROVIDER == "resend":
+            if not settings.RESEND_API_KEY:
+                logger.error("❌ RESEND_API_KEY non configuré")
+                return {"success": False, "error": "Resend API key missing"}
+            return await EmailService._send_via_resend(to_email, subject, html_content)
+        
+        elif settings.EMAIL_PROVIDER == "smtp":
+            if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+                logger.error("❌ SMTP credentials non configurés")
+                return {"success": False, "error": "SMTP credentials missing"}
+            return await EmailService._send_via_smtp(to_email, subject, html_content)
+        
+        else:
+            logger.error(f"❌ Provider inconnu: {settings.EMAIL_PROVIDER}")
+            return {"success": False, "error": f"Unknown provider: {settings.EMAIL_PROVIDER}"}
 
     @staticmethod
     async def send_devis(

@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
-
+from datetime import datetime, timezone
+from app.core.config import settings
 from uuid import UUID
 from typing import Optional
 from app.db.engine import get_db
@@ -13,7 +14,7 @@ from app.models.user import User
 from app.models.document import DocumentType, DocumentStatus
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
-from datetime import datetime, timezone
+from app.utils.datetime import to_naive_utc 
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -175,13 +176,12 @@ async def send_document_email(
     
     # 2. Préparer les données
     totals = DocumentService.calculate_totals(document.items)
-    # Note: adapte format_currency selon ta lib
-    total_amount = f"{totals['grand_total_cents'] / 100:.2f} €" 
+    total_amount = f"{totals['grand_total_cents'] / 100:.2f} €"
     
     base_url = settings.FRONTEND_URL or "http://localhost:3000"
     preview_url = f"{base_url}/dashboard/quotes/{document_id}"
     
-    user_name = current_user.username or current_user.email
+    user_name = "lunel"
     user_company = current_user.company_name or "Sharaco"
     
     # 3. Envoyer l'email selon le type
@@ -214,7 +214,8 @@ async def send_document_email(
     # 4. Mettre à jour le statut en SENT (si c'était un brouillon)
     if document.status == DocumentStatus.DRAFT:
         document.status = DocumentStatus.SENT
-        document.sent_at = datetime.now(timezone.utc)
+        # ✅ CORRECTION : Utiliser to_naive_utc() pour convertir le datetime
+        document.sent_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
         logger.info(f"🔄 Statut du document {document_id} mis à jour: SENT")
