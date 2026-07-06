@@ -3,6 +3,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
 from app.services.pdfRenderer import pdf_renderer
+from app.services.emailService import EmailService
+
 from uuid import UUID
 from typing import Optional
 from app.db.engine import get_db
@@ -11,11 +13,13 @@ from app.models.user import User
 from app.models.document import DocumentType, DocumentStatus
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
+from datetime import datetime, timezone
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
     DocumentUpdate,
     DocumentStatusUpdate,
+    DocumentEmailRequest,
     DocumentListRead,
     DocumentProjectLink,
     DocumentPreviewRequest,
@@ -143,6 +147,84 @@ async def preview_document_pdf(
 # ============================================================
 # 📄 PDF & PREVIEW pour documents sauvegardés
 # ============================================================
+
+
+@router.post("/{document_id}/send-email")
+async def send_document_email(
+    document_id: UUID,
+    email_data: DocumentEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Envoie un document par email et met à jour son statut."""
+    logger.info(f"📧 POST /documents/{document_id}/send-email")
+    
+    # 1. Récupérer le document et le client
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    from app.services.clientService import ClientService
+    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    
+    to_email = email_data.override_email or client.email
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Le client n'a pas d'email enregistré.")
+    
+    # 2. Préparer les données
+    totals = DocumentService.calculate_totals(document.items)
+    # Note: adapte format_currency selon ta lib
+    total_amount = f"{totals['grand_total_cents'] / 100:.2f} €" 
+    
+    base_url = settings.FRONTEND_URL or "http://localhost:3000"
+    preview_url = f"{base_url}/dashboard/quotes/{document_id}"
+    
+    user_name = current_user.username or current_user.email
+    user_company = current_user.company_name or "Sharaco"
+    
+    # 3. Envoyer l'email selon le type
+    if document.type == DocumentType.DEVIS:
+        result = await EmailService.send_devis(
+            to_email=to_email,
+            client_name=client.name,
+            document_number=document.number or str(document_id),
+            total_amount=total_amount,
+            preview_url=preview_url,
+            user_name=user_name,
+            user_company=user_company,
+            custom_message=email_data.custom_message,
+        )
+    else:
+        result = await EmailService.send_facture(
+            to_email=to_email,
+            client_name=client.name,
+            document_number=document.number or str(document_id),
+            total_amount=total_amount,
+            preview_url=preview_url,
+            user_name=user_name,
+            user_company=user_company,
+            custom_message=email_data.custom_message,
+        )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=f"Erreur d'envoi: {result.get('error')}")
+    
+    # 4. Mettre à jour le statut en SENT (si c'était un brouillon)
+    if document.status == DocumentStatus.DRAFT:
+        document.status = DocumentStatus.SENT
+        document.sent_at = datetime.now(timezone.utc)
+        db.add(document)
+        await db.commit()
+        logger.info(f"🔄 Statut du document {document_id} mis à jour: SENT")
+    
+    return {
+        "message": "Email envoyé avec succès",
+        "to_email": to_email,
+        "resend_id": result.get("id")
+    }
+
 
 @router.get("/{document_id}/pdf")
 async def get_document_pdf(

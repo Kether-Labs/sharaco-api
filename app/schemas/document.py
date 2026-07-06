@@ -153,6 +153,11 @@ class DocumentUpdate(BaseModel):
 class DocumentStatusUpdate(BaseModel):
     status: DocumentStatus
 
+class DocumentEmailRequest(BaseModel):
+    custom_message: Optional[str] = Field("", max_length=1000, description="Message personnalisé")
+    # On récupère l'email du client en base, mais on peut forcer un email ici
+    override_email: Optional[str] = Field(None, description="Forcer l'envoi à un autre email")
+
 
 class DocumentPreviewItem(BaseModel):
     description: str = ""

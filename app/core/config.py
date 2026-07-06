@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
+from pydantic import Field
 
 load_dotenv()
 
@@ -38,6 +39,10 @@ class Settings(BaseSettings):
 
     # === Frontend ===
     FRONTEND_URL: str = "http://localhost:3000"
+
+    RESEND_API_KEY: str = Field(default="", env="RESEND_API_KEY")
+
+    RESEND_FROM_EMAIL: str = Field(default="noreply@sharaco.com", env="RESEND_FROM_EMAIL")
 
     @property
     def DATABASE_URL(self) -> str:
