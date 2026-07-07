@@ -38,6 +38,28 @@ class Document(SQLModel, table=True):
     viewed_at: Optional[datetime] = None  # Première visualisation
     notes: Optional[str] = Field(default=None, description="Notes/conditions visibles sur le document")
 
+
+    share_token: Optional[str] = Field(
+        default=None,
+        index=True,
+        unique=True,
+        max_length=64,
+        description="Token unique pour le partage public du document"
+    )
+    share_enabled: bool = Field(
+        default=False,
+        description="Activer/désactiver le partage public"
+    )
+    share_expires_at: Optional[datetime] = Field(
+        default=None,
+        description="Date d'expiration du lien de partage"
+    )
+
+    @staticmethod
+    def generate_share_token() -> str:
+        """Génère un token sécurisé de 32 caractères."""
+        return secrets.token_urlsafe(32)
+    
     # === Relations ===
     owner: "User" = Relationship(back_populates="documents")
     user_id: UUID = Field(foreign_key="user.id")
