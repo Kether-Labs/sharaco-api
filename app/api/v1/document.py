@@ -157,10 +157,9 @@ async def send_document_email(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Envoie un document par email et met à jour son statut."""
+    """Envoie un document par email avec un lien de partage sécurisé."""
     logger.info(f"📧 POST /documents/{document_id}/send-email")
     
-    # 1. Récupérer le document et le client
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
@@ -174,17 +173,31 @@ async def send_document_email(
     if not to_email:
         raise HTTPException(status_code=400, detail="Le client n'a pas d'email enregistré.")
     
-    # 2. Préparer les données
+    # ✅ Générer un lien de partage si pas encore fait
+    if not document.share_token:
+        document.share_token = Document.generate_share_token()
+        document.share_enabled = True
+        document.share_expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+        db.add(document)
+        await db.commit()
+        await db.refresh(document)
+    
+    # Construire l'URL publique
+    base_url = settings.FRONTEND_URL or "http://localhost:3000"
+    preview_url = f"{base_url}/view/{document.share_token}"  # ✅ Lien public
+    
+    # Préparer les données
     totals = DocumentService.calculate_totals(document.items)
     total_amount = f"{totals['grand_total_cents'] / 100:.2f} €"
     
-    base_url = settings.FRONTEND_URL or "http://localhost:3000"
-    preview_url = f"{base_url}/dashboard/quotes/{document_id}"
+    user_name = (
+        getattr(current_user, 'full_name', None) or
+        getattr(current_user, 'first_name', None) or
+        current_user.email.split('@')[0]
+    )
+    user_company = getattr(current_user, 'company_name', None) or "Sharaco"
     
-    user_name = "lunel"
-    user_company = current_user.company_name or "Sharaco"
-    
-    # 3. Envoyer l'email selon le type
+    # Envoyer l'email
     if document.type == DocumentType.DEVIS:
         result = await EmailService.send_devis(
             to_email=to_email,
@@ -211,19 +224,138 @@ async def send_document_email(
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=f"Erreur d'envoi: {result.get('error')}")
     
-    # 4. Mettre à jour le statut en SENT (si c'était un brouillon)
+    # Mettre à jour le statut
     if document.status == DocumentStatus.DRAFT:
         document.status = DocumentStatus.SENT
-        # ✅ CORRECTION : Utiliser to_naive_utc() pour convertir le datetime
+        from app.utils.datetime import to_naive_utc
         document.sent_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
-        logger.info(f"🔄 Statut du document {document_id} mis à jour: SENT")
     
     return {
         "message": "Email envoyé avec succès",
         "to_email": to_email,
+        "share_url": preview_url,
         "resend_id": result.get("id")
+    }
+
+
+@router.post("/{document_id}/share", response_model=dict)
+async def generate_share_link(
+    document_id: UUID,
+    expires_days: int = Query(default=30, ge=1, le=365, description="Durée de validité en jours"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Génère ou régénère un lien de partage pour un document."""
+    logger.info(f"🔗 POST /documents/{document_id}/share")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    # Générer un nouveau token
+    document.share_token = Document.generate_share_token()
+    document.share_enabled = True
+    document.share_expires_at = datetime.now(timezone.utc) + timedelta(days=expires_days)
+    
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    
+    # Construire l'URL publique
+    base_url = settings.FRONTEND_URL or "http://localhost:3000"
+    share_url = f"{base_url}/view/{document.share_token}"
+    
+    logger.info(f"✅ Lien de partage généré: {share_url}")
+    
+    return {
+        "share_url": share_url,
+        "share_token": document.share_token,
+        "expires_at": document.share_expires_at,
+    }
+
+@router.delete("/{document_id}/share")
+async def revoke_share_link(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Révoque le lien de partage d'un document."""
+    logger.info(f"🔗 DELETE /documents/{document_id}/share")
+    
+    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    document.share_token = None
+    document.share_enabled = False
+    document.share_expires_at = None
+    
+    db.add(document)
+    await db.commit()
+    
+    return {"message": "Lien de partage révoqué"}
+
+
+@router.get("/shared/{token}", response_model=DocumentRead)
+async def get_shared_document(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Accès public à un document partagé via son token."""
+    logger.info(f"👁️ GET /documents/shared/{token[:8]}...")
+    
+    # Trouver le document par token
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.items))
+        .where(Document.share_token == token)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Le partage de ce document a été désactivé")
+    
+    # Vérifier l'expiration
+    if document.share_expires_at:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Ce lien a expiré")
+    
+    # Marquer comme vu (optionnel)
+    if document.status == DocumentStatus.SENT and not document.viewed_at:
+        document.status = DocumentStatus.VIEWED
+        document.viewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.add(document)
+        await db.commit()
+    
+    # Retourner le document (sans infos sensibles)
+    totals = DocumentService.calculate_totals(document.items)
+    
+    return {
+        "id": document.id,
+        "type": document.type,
+        "status": document.status,
+        "number": document.number,
+        "created_at": document.created_at,
+        "due_date": document.due_date,
+        "layout_style": document.layout_style,
+        "notes": document.notes,
+        "items": document.items,
+        "subtotal_cents": totals["subtotal_cents"],
+        "tax_total_cents": totals["tax_total_cents"],
+        "grand_total_cents": totals["grand_total_cents"],
+        # Champs de style
+        "primary_color": document.primary_color,
+        "secondary_color": document.secondary_color,
+        "accent_color": document.accent_color,
+        "background_color": document.background_color,
+        "text_color": document.text_color,
+        "font_family": document.font_family,
     }
 
 
