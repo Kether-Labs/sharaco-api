@@ -68,7 +68,7 @@ class SharedDocumentRead(BaseModel):
     refused_at: Optional[datetime] = None
     refusal_reason: Optional[str] = None
     signature_name: Optional[str] = None
-    
+    can_validate: bool = False  # Indique si le client peut accepter/refuser le document
     # Style
     primary_color: Optional[str] = "#2563EB"
     secondary_color: Optional[str] = "#1E40AF"

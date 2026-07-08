@@ -6,6 +6,10 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import Document
 from app.services.emailService import EmailService
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 class NotificationService:
     

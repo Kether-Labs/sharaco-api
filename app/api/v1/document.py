@@ -353,6 +353,16 @@ async def accept_document_as_client(
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
     
+    # ✅ IDEMPOTENCE : Si déjà accepté, retourner succès
+    if document.status == DocumentStatus.ACCEPTED:
+        logger.info(f"ℹ️ Document {document.id} déjà accepté")
+        return {
+            "message": "Devis déjà accepté",
+            "status": document.status,
+            "accepted_at": document.accepted_at,
+            "already_accepted": True,
+        }
+    
     # Vérifier que le document peut être accepté
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
@@ -377,6 +387,7 @@ async def accept_document_as_client(
         "message": "Devis accepté avec succès",
         "status": document.status,
         "accepted_at": document.accepted_at,
+        "already_accepted": False,
     }
 
 
@@ -406,6 +417,16 @@ async def refuse_document_as_client(
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
     
+    # ✅ IDEMPOTENCE : Si déjà refusé, retourner succès
+    if document.status == DocumentStatus.REFUSED:
+        logger.info(f"ℹ️ Document {document.id} déjà refusé")
+        return {
+            "message": "Devis déjà refusé",
+            "status": document.status,
+            "refused_at": document.refused_at,
+            "already_refused": True,
+        }
+    
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
@@ -429,6 +450,7 @@ async def refuse_document_as_client(
         "message": "Devis refusé",
         "status": document.status,
         "refused_at": document.refused_at,
+        "already_refused": False,
     }
 
 @router.post("/shared/{token}/refuse")
@@ -610,7 +632,7 @@ async def get_document_for_client(
         "client_name": document.client.name if document.client else None,
         "client_email": document.client.email if document.client else None,
         # ✅ ICI le client peut valider
-        "can_validate": can_validate,
+        "can_validate": True,
         "accepted_at": document.accepted_at,
         "refused_at": document.refused_at,
         "signature_name": document.signature_name,
