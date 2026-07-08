@@ -15,6 +15,7 @@ from app.models.document import DocumentType, DocumentStatus
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
 from app.utils.datetime import to_naive_utc 
+from datetime import datetime, timezone, timedelta
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -24,15 +25,21 @@ from app.schemas.document import (
     DocumentListRead,
     DocumentProjectLink,
     DocumentPreviewRequest,
+    SharedDocumentRead,
+    AcceptDocumentRequest,
+    RefuseDocumentRequest
 )
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.document import Document
-
+from pydantic import BaseModel, Field
 import logging
 
 router = APIRouter(tags=["documents"])
 logger = logging.getLogger(__name__)
+
+
+
 
 
 # ============================================================
@@ -177,7 +184,9 @@ async def send_document_email(
     if not document.share_token:
         document.share_token = Document.generate_share_token()
         document.share_enabled = True
-        document.share_expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+        document.share_expires_at = to_naive_utc(
+            datetime.now(timezone.utc) + timedelta(days=30)
+        )
         db.add(document)
         await db.commit()
         await db.refresh(document)
@@ -257,7 +266,10 @@ async def generate_share_link(
     # Générer un nouveau token
     document.share_token = Document.generate_share_token()
     document.share_enabled = True
-    document.share_expires_at = datetime.now(timezone.utc) + timedelta(days=expires_days)
+    # ✅ CORRECTION : Convertir en datetime naive
+    document.share_expires_at = to_naive_utc(
+        datetime.now(timezone.utc) + timedelta(days=expires_days)
+    )
     
     db.add(document)
     await db.commit()
@@ -298,7 +310,108 @@ async def revoke_share_link(
     return {"message": "Lien de partage révoqué"}
 
 
-@router.get("/shared/{token}", response_model=DocumentRead)
+@router.post("/shared/{token}/accept")
+async def accept_shared_document(
+    token: str,
+    data: AcceptDocumentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Le client accepte le document via le lien public."""
+    logger.info(f"✅ POST /documents/shared/{token[:8]}.../accept")
+    
+    # Récupérer le document
+    result = await db.execute(
+        select(Document).where(Document.share_token == token)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+    
+    # Vérifier expiration
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+    
+    # Vérifier que le document peut être accepté
+    if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce document ne peut pas être accepté (statut actuel: {document.status})"
+        )
+    
+    # Mettre à jour le document
+    document.status = DocumentStatus.ACCEPTED
+    document.accepted_at = to_naive_utc(datetime.now(timezone.utc))
+    document.signature_name = data.signature_name
+    
+    db.add(document)
+    await db.commit()
+    
+    logger.info(f"✅ Document {document.id} accepté par {data.signature_name}")
+    
+    return {
+        "message": "Document accepté avec succès",
+        "status": document.status,
+        "accepted_at": document.accepted_at,
+    }
+
+@router.post("/shared/{token}/refuse")
+async def refuse_shared_document(
+    token: str,
+    data: RefuseDocumentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Le client refuse le document via le lien public."""
+    logger.info(f"❌ POST /documents/shared/{token[:8]}.../refuse")
+    
+    # Récupérer le document
+    result = await db.execute(
+        select(Document).where(Document.share_token == token)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+    
+    # Vérifier expiration
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+    
+    # Vérifier que le document peut être refusé
+    if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce document ne peut pas être refusé (statut actuel: {document.status})"
+        )
+    
+    # Mettre à jour le document
+    document.status = DocumentStatus.REFUSED
+    document.refused_at = to_naive_utc(datetime.now(timezone.utc))
+    document.refusal_reason = data.reason
+    
+    db.add(document)
+    await db.commit()
+    
+    logger.info(f"❌ Document {document.id} refusé. Raison: {data.reason}")
+    
+    return {
+        "message": "Document refusé",
+        "status": document.status,
+        "refused_at": document.refused_at,
+    }
+
+
+@router.get("/shared/{token}", response_model=SharedDocumentRead)
 async def get_shared_document(
     token: str,
     db: AsyncSession = Depends(get_db),
@@ -306,10 +419,14 @@ async def get_shared_document(
     """Accès public à un document partagé via son token."""
     logger.info(f"👁️ GET /documents/shared/{token[:8]}...")
     
-    # Trouver le document par token
+    # Trouver le document avec ses relations
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items))
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner)
+        )
         .where(Document.share_token == token)
     )
     document = result.scalar_one_or_none()
@@ -322,20 +439,21 @@ async def get_shared_document(
     
     # Vérifier l'expiration
     if document.share_expires_at:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Ce lien a expiré")
     
-    # Marquer comme vu (optionnel)
+    # Marquer comme vu
     if document.status == DocumentStatus.SENT and not document.viewed_at:
         document.status = DocumentStatus.VIEWED
-        document.viewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        document.viewed_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
     
-    # Retourner le document (sans infos sensibles)
+    # Calculer les totaux
     totals = DocumentService.calculate_totals(document.items)
     
+    # ✅ Retourner avec les infos entreprise/client (mais PAS user_id/client_id)
     return {
         "id": document.id,
         "type": document.type,
@@ -349,15 +467,28 @@ async def get_shared_document(
         "subtotal_cents": totals["subtotal_cents"],
         "tax_total_cents": totals["tax_total_cents"],
         "grand_total_cents": totals["grand_total_cents"],
-        # Champs de style
         "primary_color": document.primary_color,
         "secondary_color": document.secondary_color,
         "accent_color": document.accent_color,
         "background_color": document.background_color,
         "text_color": document.text_color,
         "font_family": document.font_family,
+        "show_bank_details": document.show_bank_details,
+        "show_tax_id": document.show_tax_id,
+        # Infos entreprise (depuis le owner)
+        "company_name": getattr(document.owner, 'company_name', None) if document.owner else None,
+        "company_email": getattr(document.owner, 'email', None) if document.owner else None,
+        "company_phone": getattr(document.owner, 'phone', None) if document.owner else None,
+        "company_address": getattr(document.owner, 'address', None) if document.owner else None,
+        # Infos client
+        "client_name": document.client.name if document.client else None,
+        "client_email": document.client.email if document.client else None,
+        "client_address": document.client.address if document.client else None,
+        "accepted_at": document.accepted_at,
+        "refused_at": document.refused_at,
+        "refusal_reason": document.refusal_reason,
+        "signature_name": document.signature_name,
     }
-
 
 @router.get("/{document_id}/pdf")
 async def get_document_pdf(

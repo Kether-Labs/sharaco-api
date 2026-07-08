@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from enum import Enum
 from app.utils.datetime import to_naive_utc
-
+import secrets
 
 def _utcnow_naive() -> datetime:
     """Retourne l'heure UTC naive (sans timezone)."""
@@ -18,6 +18,8 @@ class DocumentType(str, Enum):
 class DocumentStatus(str, Enum):
     DRAFT = "DRAFT"
     SENT = "SENT"
+    ACCEPTED = "ACCEPTED"  
+    REFUSED = "REFUSED" 
     PAID = "PAID"
     VIEWED = "VIEWED"
 
@@ -38,6 +40,10 @@ class Document(SQLModel, table=True):
     viewed_at: Optional[datetime] = None  # Première visualisation
     notes: Optional[str] = Field(default=None, description="Notes/conditions visibles sur le document")
 
+    accepted_at: Optional[datetime] = None
+    refused_at: Optional[datetime] = None
+    refusal_reason: Optional[str] = None
+    signature_name: Optional[str] = Field(default=None, max_length=255)
 
     share_token: Optional[str] = Field(
         default=None,

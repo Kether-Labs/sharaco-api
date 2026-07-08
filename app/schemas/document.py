@@ -47,6 +47,51 @@ class DocumentItemRead(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class SharedDocumentRead(BaseModel):
+    """Schéma pour les documents partagés publiquement (sans infos sensibles)."""
+    id: UUID
+    type: DocumentType
+    status: DocumentStatus
+    number: Optional[str] = None
+    created_at: datetime
+    due_date: Optional[datetime] = None
+    layout_style: str = "classic"
+    notes: Optional[str] = None
+    items: List[DocumentItemRead] = []
+    
+    # Totaux
+    subtotal_cents: Optional[int] = None
+    tax_total_cents: Optional[int] = None
+    grand_total_cents: Optional[int] = None
+
+    accepted_at: Optional[datetime] = None
+    refused_at: Optional[datetime] = None
+    refusal_reason: Optional[str] = None
+    signature_name: Optional[str] = None
+    
+    # Style
+    primary_color: Optional[str] = "#2563EB"
+    secondary_color: Optional[str] = "#1E40AF"
+    accent_color: Optional[str] = "#DBEAFE"
+    background_color: Optional[str] = "#FFFFFF"
+    text_color: Optional[str] = "#1F2937"
+    font_family: Optional[str] = "Inter"
+    show_bank_details: bool = True
+    show_tax_id: bool = True
+    
+    # ✅ Infos entreprise (à afficher au client)
+    company_name: Optional[str] = None
+    company_email: Optional[str] = None
+    company_phone: Optional[str] = None
+    company_address: Optional[str] = None
+    
+    # ✅ Infos client (pour qu'il se reconnaisse)
+    client_name: Optional[str] = None
+    client_email: Optional[str] = None
+    client_address: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
 
 class DocumentCreate(BaseModel):
     """Création d'un document."""
@@ -204,3 +249,9 @@ class DocumentListRead(BaseModel):
     grand_total_cents: Optional[int] = None
     project_id: Optional[UUID] = None
     model_config = {"from_attributes": True}
+
+class AcceptDocumentRequest(BaseModel):
+    signature_name: str = Field(..., min_length=2, max_length=255, description="Nom du signataire")
+
+class RefuseDocumentRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=1000, description="Motif du refus")
