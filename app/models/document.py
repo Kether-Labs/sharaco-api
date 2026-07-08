@@ -52,6 +52,20 @@ class Document(SQLModel, table=True):
         max_length=64,
         description="Token unique pour le partage public du document"
     )
+
+    client_token: Optional[str] = Field(
+        default=None,
+        index=True,
+        unique=True,
+        max_length=64,
+        description="Token PRIVÉ pour validation (accepter/refuser)"
+    )
+
+    client_token_email: Optional[str] = Field(
+        default=None,
+        description="Email auquel le token privé a été envoyé"
+    )
+    
     share_enabled: bool = Field(
         default=False,
         description="Activer/désactiver le partage public"

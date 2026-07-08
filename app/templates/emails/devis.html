@@ -1,3 +1,4 @@
+<!-- app/templates/emails/devis.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -11,14 +12,17 @@
         .content { padding: 30px; }
         .info-box { background-color: #f1f5f9; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #0ea5e9; }
         .amount { font-size: 28px; font-weight: 800; color: #0ea5e9; margin: 10px 0 0; }
-        .button { display: inline-block; background-color: #0ea5e9; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 20px; }
+        .button { display: inline-block; background-color: #0ea5e9; color: #ffffff !important; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 20px; }
+        .button:hover { background-color: #0284c7; }
+        .secure-badge { display: inline-block; background-color: #ecfdf5; color: #065f46; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 15px; border: 1px solid #a7f3d0; }
         .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; }
+        .warning { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 8px; font-size: 13px; color: #78350f; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Votre Devis est prêt</h1>
+            <h1>📄 Votre Devis est prêt</h1>
             <p style="margin: 10px 0 0; opacity: 0.9;">{{ user_company }}</p>
         </div>
         
@@ -41,18 +45,30 @@
             </div>
             
             <div style="text-align: center;">
-                <a href="{{ preview_url }}" class="button">Voir et accepter le devis</a>
+                <a href="{{ client_url }}" class="button">✅ Voir et accepter le devis</a>
+                <br>
+                <span class="secure-badge">🔒 Lien sécurisé et personnel</span>
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Important :</strong> Ce lien est personnel et confidentiel. 
+                Il vous permet de consulter le devis et de le valider directement en ligne. 
+                Ne le partagez pas avec des tiers.
             </div>
             
             <p style="color: #64748b; font-size: 14px; margin-top: 30px;">
                 Si vous avez des questions, vous pouvez répondre directement à cet email.
             </p>
             
-            <p>Cordialement,<br><strong>{{ user_name }}</strong></p>
+            <p>Cordialement,<br><strong>{{ user_name }}</strong><br>
+            <span style="color: #64748b; font-size: 13px;">{{ user_company }}</span></p>
         </div>
         
         <div class="footer">
-            <p>Envoyé via Sharaco • {{ user_company }}</p>
+            <p>Cet email a été envoyé via <strong>Sharaco</strong> • {{ user_company }}</p>
+            <p style="margin-top: 8px; font-size: 11px;">
+                Si vous n'attendiez pas ce devis, ignorez simplement cet email.
+            </p>
         </div>
     </div>
 </body>

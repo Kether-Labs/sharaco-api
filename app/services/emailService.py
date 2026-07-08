@@ -112,24 +112,24 @@ class EmailService:
             logger.error(f"❌ Provider inconnu: {settings.EMAIL_PROVIDER}")
             return {"success": False, "error": f"Unknown provider: {settings.EMAIL_PROVIDER}"}
 
-    @staticmethod
     async def send_devis(
-        to_email: str,
-        client_name: str,
-        document_number: str,
-        total_amount: str,
-        preview_url: str,
-        user_name: str,
-        user_company: str,
-        custom_message: str = "",
+    to_email: str,
+    client_name: str,
+    document_number: str,
+    total_amount: str,
+    client_url: str,  # ✅ Renommé de preview_url à client_url
+    due_date: str = None,  # ✅ Ajout pour cohérence
+    user_name: str = "",
+    user_company: str = "",
+    custom_message: str = "",
     ) -> dict:
-        """Envoie un devis."""
+   
         template = email_env.get_template("devis.html")
         html = template.render(
             to_name=client_name,
             document_number=document_number,
             total_amount=total_amount,
-            preview_url=preview_url,
+            client_url=client_url,  # ✅ Lien privé
             user_name=user_name,
             user_company=user_company,
             custom_message=custom_message,
@@ -141,24 +141,27 @@ class EmailService:
             html_content=html,
         )
 
+
     @staticmethod
     async def send_facture(
-        to_email: str,
-        client_name: str,
-        document_number: str,
-        total_amount: str,
-        preview_url: str,
-        user_name: str,
-        user_company: str,
-        custom_message: str = "",
+    to_email: str,
+    client_name: str,
+    document_number: str,
+    total_amount: str,
+    client_url: str,  # ✅ Renommé
+    due_date: str = None,  # ✅ Ajout
+    user_name: str = "",
+    user_company: str = "",
+    custom_message: str = "",
     ) -> dict:
-        """Envoie une facture."""
+        """Envoie une facture avec le lien PRIVÉ client."""
         template = email_env.get_template("facture.html")
         html = template.render(
             to_name=client_name,
             document_number=document_number,
             total_amount=total_amount,
-            preview_url=preview_url,
+            client_url=client_url,  # ✅ Lien privé
+            due_date=due_date,
             user_name=user_name,
             user_company=user_company,
             custom_message=custom_message,

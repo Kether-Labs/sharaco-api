@@ -6,6 +6,7 @@ from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
 from datetime import datetime, timezone
 from app.core.config import settings
+from app.services.notificationService import NotificationService
 from uuid import UUID
 from typing import Optional
 from app.db.engine import get_db
@@ -164,7 +165,7 @@ async def send_document_email(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Envoie un document par email avec un lien de partage sécurisé."""
+    """Envoie un document par email avec le lien PRIVÉ client."""
     logger.info(f"📧 POST /documents/{document_id}/send-email")
     
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
@@ -178,26 +179,40 @@ async def send_document_email(
     
     to_email = email_data.override_email or client.email
     if not to_email:
-        raise HTTPException(status_code=400, detail="Le client n'a pas d'email enregistré.")
+        raise HTTPException(status_code=400, detail="Email du client requis")
     
-    # ✅ Générer un lien de partage si pas encore fait
+    # ✅ GÉNÉRER LES DEUX TOKENS
     if not document.share_token:
         document.share_token = Document.generate_share_token()
         document.share_enabled = True
         document.share_expires_at = to_naive_utc(
             datetime.now(timezone.utc) + timedelta(days=30)
         )
-        db.add(document)
-        await db.commit()
-        await db.refresh(document)
     
-    # Construire l'URL publique
+    # ✅ Token PRIVÉ pour le client (lié à l'email)
+    if not document.client_token:
+        document.client_token = Document.generate_share_token()
+        document.client_token_email = to_email  # ✅ Lié à l'email du client
+    
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    
+    # ✅ URL PRIVÉE pour le client (dans l'email)
     base_url = settings.FRONTEND_URL or "http://localhost:3000"
-    preview_url = f"{base_url}/view/{document.share_token}"  # ✅ Lien public
+    client_url = f"{base_url}/client/{document.client_token}"  # ← Lien privé
     
     # Préparer les données
     totals = DocumentService.calculate_totals(document.items)
     total_amount = f"{totals['grand_total_cents'] / 100:.2f} €"
+    
+    # ✅ Formater la date d'échéance si présente
+    due_date_str = None
+    if document.due_date:
+        due_date_str = document.due_date.strftime("%d/%m/%Y")
+    
+    base_url = settings.FRONTEND_URL or "http://localhost:3000"
+    client_url = f"{base_url}/client/{document.client_token}"  # ✅ Lien PRIVÉ
     
     user_name = (
         getattr(current_user, 'full_name', None) or
@@ -206,14 +221,15 @@ async def send_document_email(
     )
     user_company = getattr(current_user, 'company_name', None) or "Sharaco"
     
-    # Envoyer l'email
+    # Envoyer l'email selon le type
     if document.type == DocumentType.DEVIS:
         result = await EmailService.send_devis(
             to_email=to_email,
             client_name=client.name,
             document_number=document.number or str(document_id),
             total_amount=total_amount,
-            preview_url=preview_url,
+            client_url=client_url,  # ✅ Lien privé
+            due_date=due_date_str,
             user_name=user_name,
             user_company=user_company,
             custom_message=email_data.custom_message,
@@ -224,7 +240,8 @@ async def send_document_email(
             client_name=client.name,
             document_number=document.number or str(document_id),
             total_amount=total_amount,
-            preview_url=preview_url,
+            client_url=client_url,  # ✅ Lien privé
+            due_date=due_date_str,
             user_name=user_name,
             user_company=user_company,
             custom_message=email_data.custom_message,
@@ -236,7 +253,6 @@ async def send_document_email(
     # Mettre à jour le statut
     if document.status == DocumentStatus.DRAFT:
         document.status = DocumentStatus.SENT
-        from app.utils.datetime import to_naive_utc
         document.sent_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
@@ -244,7 +260,8 @@ async def send_document_email(
     return {
         "message": "Email envoyé avec succès",
         "to_email": to_email,
-        "share_url": preview_url,
+        "client_url": client_url,  # ✅ Lien privé envoyé
+        "share_url": f"{base_url}/view/{document.share_token}",  # Lien public
         "resend_id": result.get("id")
     }
 
@@ -310,18 +327,17 @@ async def revoke_share_link(
     return {"message": "Lien de partage révoqué"}
 
 
-@router.post("/shared/{token}/accept")
-async def accept_shared_document(
+@router.post("/client/{token}/accept")
+async def accept_document_as_client(
     token: str,
     data: AcceptDocumentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Le client accepte le document via le lien public."""
-    logger.info(f"✅ POST /documents/shared/{token[:8]}.../accept")
+    """Le client accepte le devis via le token PRIVÉ."""
+    logger.info(f"✅ POST /documents/client/{token[:8]}.../accept")
     
-    # Récupérer le document
     result = await db.execute(
-        select(Document).where(Document.share_token == token)
+        select(Document).where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
     
@@ -341,10 +357,10 @@ async def accept_shared_document(
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
-            detail=f"Ce document ne peut pas être accepté (statut actuel: {document.status})"
+            detail=f"Ce document ne peut pas être accepté (statut: {document.status})"
         )
     
-    # Mettre à jour le document
+    # Mettre à jour
     document.status = DocumentStatus.ACCEPTED
     document.accepted_at = to_naive_utc(datetime.now(timezone.utc))
     document.signature_name = data.signature_name
@@ -352,12 +368,67 @@ async def accept_shared_document(
     db.add(document)
     await db.commit()
     
-    logger.info(f"✅ Document {document.id} accepté par {data.signature_name}")
+    logger.info(f"✅ Devis {document.id} accepté par {data.signature_name}")
+    
+    # Notifier l'utilisateur
+    await NotificationService.notify_document_accepted(document.id, db)
     
     return {
-        "message": "Document accepté avec succès",
+        "message": "Devis accepté avec succès",
         "status": document.status,
         "accepted_at": document.accepted_at,
+    }
+
+
+@router.post("/client/{token}/refuse")
+async def refuse_document_as_client(
+    token: str,
+    data: RefuseDocumentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Le client refuse le devis via le token PRIVÉ."""
+    logger.info(f"❌ POST /documents/client/{token[:8]}.../refuse")
+    
+    result = await db.execute(
+        select(Document).where(Document.client_token == token)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+    
+    # Vérifier expiration
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+    
+    if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce document ne peut pas être refusé (statut: {document.status})"
+        )
+    
+    # Mettre à jour
+    document.status = DocumentStatus.REFUSED
+    document.refused_at = to_naive_utc(datetime.now(timezone.utc))
+    document.refusal_reason = data.reason
+    
+    db.add(document)
+    await db.commit()
+    
+    logger.info(f"❌ Devis {document.id} refusé")
+    
+    # Notifier l'utilisateur
+    await NotificationService.notify_document_refused(document.id, db)
+    
+    return {
+        "message": "Devis refusé",
+        "status": document.status,
+        "refused_at": document.refused_at,
     }
 
 @router.post("/shared/{token}/refuse")
@@ -412,21 +483,16 @@ async def refuse_shared_document(
 
 
 @router.get("/shared/{token}", response_model=SharedDocumentRead)
-async def get_shared_document(
+async def get_shared_document_public(
     token: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Accès public à un document partagé via son token."""
-    logger.info(f"👁️ GET /documents/shared/{token[:8]}...")
+    """Page PUBLIQUE : Visualisation uniquement (lecture seule)."""
+    logger.info(f"👁️ GET /documents/shared/{token[:8]}... (public)")
     
-    # Trouver le document avec ses relations
     result = await db.execute(
         select(Document)
-        .options(
-            selectinload(Document.items),
-            selectinload(Document.client),
-            selectinload(Document.owner)
-        )
+        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner))
         .where(Document.share_token == token)
     )
     document = result.scalar_one_or_none()
@@ -435,13 +501,13 @@ async def get_shared_document(
         raise HTTPException(status_code=404, detail="Document introuvable")
     
     if not document.share_enabled:
-        raise HTTPException(status_code=403, detail="Le partage de ce document a été désactivé")
+        raise HTTPException(status_code=403, detail="Partage désactivé")
     
-    # Vérifier l'expiration
+    # Vérifier expiration
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
-            raise HTTPException(status_code=410, detail="Ce lien a expiré")
+            raise HTTPException(status_code=410, detail="Lien expiré")
     
     # Marquer comme vu
     if document.status == DocumentStatus.SENT and not document.viewed_at:
@@ -450,11 +516,76 @@ async def get_shared_document(
         db.add(document)
         await db.commit()
     
-    # Calculer les totaux
     totals = DocumentService.calculate_totals(document.items)
     
-    # ✅ Retourner avec les infos entreprise/client (mais PAS user_id/client_id)
     return {
+        "id": document.id,
+        "type": document.type,
+        "status": document.status,
+        "number": document.number,
+        "created_at": document.created_at,
+        "due_date": document.due_date,
+        "layout_style": document.layout_style,
+        "notes": document.notes,
+        "items": document.items,
+        "subtotal_cents": totals["subtotal_cents"],
+        "tax_total_cents": totals["tax_total_cents"],
+        "grand_total_cents": totals["grand_total_cents"],
+        # Style
+        "primary_color": document.primary_color,
+        "secondary_color": document.secondary_color,
+        "accent_color": document.accent_color,
+        "background_color": document.background_color,
+        "text_color": document.text_color,
+        "font_family": document.font_family,
+        # Infos entreprise
+        "company_name": getattr(document.owner, 'company_name', None) if document.owner else None,
+        "company_email": getattr(document.owner, 'email', None) if document.owner else None,
+        "company_phone": getattr(document.owner, 'phone', None) if document.owner else None,
+        # Infos client
+        "client_name": document.client.name if document.client else None,
+        "client_email": document.client.email if document.client else None,
+        # ✅ PAS d'actions de validation possibles ici
+        "can_validate": False,
+    }
+
+@router.get("/client/{token}", response_model=SharedDocumentRead)
+async def get_document_for_client(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Page PRIVÉE CLIENT : Visualisation + Actions (accepter/refuser)."""
+    logger.info(f"🔐 GET /documents/client/{token[:8]}... (privé)")
+    
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner))
+        .where(Document.client_token == token)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+    
+    # Vérifier expiration
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+    
+    totals = DocumentService.calculate_totals(document.items)
+    
+    # ✅ Déterminer si le client peut valider
+    can_validate = document.type == DocumentType.DEVIS and document.status in [
+        DocumentStatus.SENT,
+        DocumentStatus.VIEWED
+    ]
+    
+    return {
+        # ... mêmes champs que la page publique ...
         "id": document.id,
         "type": document.type,
         "status": document.status,
@@ -473,20 +604,15 @@ async def get_shared_document(
         "background_color": document.background_color,
         "text_color": document.text_color,
         "font_family": document.font_family,
-        "show_bank_details": document.show_bank_details,
-        "show_tax_id": document.show_tax_id,
-        # Infos entreprise (depuis le owner)
         "company_name": getattr(document.owner, 'company_name', None) if document.owner else None,
         "company_email": getattr(document.owner, 'email', None) if document.owner else None,
         "company_phone": getattr(document.owner, 'phone', None) if document.owner else None,
-        "company_address": getattr(document.owner, 'address', None) if document.owner else None,
-        # Infos client
         "client_name": document.client.name if document.client else None,
         "client_email": document.client.email if document.client else None,
-        "client_address": document.client.address if document.client else None,
+        # ✅ ICI le client peut valider
+        "can_validate": can_validate,
         "accepted_at": document.accepted_at,
         "refused_at": document.refused_at,
-        "refusal_reason": document.refusal_reason,
         "signature_name": document.signature_name,
     }
 
