@@ -8,6 +8,7 @@ from app.api.v1.document import router as document_router
 from app.api.v1.reminder import router as reminder_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.project import router as project_router
+from app.api.v1.activity import router as activity_router
 
 app = FastAPI(title="Sharaco API", version="0.1.0")
 
@@ -31,6 +32,7 @@ app.include_router(document_router, prefix="/api/v1/documents", tags=["documents
 app.include_router(reminder_router, prefix="/api/v1/reminders", tags=["reminders"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(project_router, prefix="/api/v1/projects", tags=["projects"])
+app.include_router(activity_router, prefix="/api/v1/activity", tags=["activity"])
 
 
 @app.get("/")
