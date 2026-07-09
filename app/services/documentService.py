@@ -165,7 +165,7 @@ class DocumentService:
         """Liste les documents avec filtres et pagination."""
         statement = (
             select(Document)
-            .options(selectinload(Document.items))
+            .options(selectinload(Document.items),selectinload(Document.client) )
             .where(Document.user_id == user_id)
         )
 

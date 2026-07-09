@@ -7,6 +7,15 @@ from datetime import datetime
 from app.models.document import DocumentType, DocumentStatus
 
 
+class ClientBrief(BaseModel):
+    """Informations minimales du client pour les listes."""
+    id: UUID
+    name: str
+    email: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentItemCreate(BaseModel):
     description: str
     quantity: int = 1
@@ -161,7 +170,7 @@ class DocumentRead(BaseModel):
     subtotal_cents: Optional[int] = None
     tax_total_cents: Optional[int] = None
     grand_total_cents: Optional[int] = None
-
+    client: Optional[ClientBrief] = None
     model_config = {"from_attributes": True}
 
 
@@ -244,6 +253,7 @@ class DocumentListRead(BaseModel):
     sent_at: Optional[datetime] = None
     viewed_at: Optional[datetime] = None
     client_id: UUID
+    client: Optional[ClientBrief] = None
     template_id: Optional[UUID] = None
     layout_style: str = "classic"
     grand_total_cents: Optional[int] = None

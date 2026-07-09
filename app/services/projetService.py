@@ -70,7 +70,8 @@ class ProjectService:
             select(Project)
             .options(
                 selectinload(Project.attachments),
-                selectinload(Project.documents)
+                selectinload(Project.documents),
+                selectinload(Project.client)
             )
             .where(
                 Project.id == project_id,

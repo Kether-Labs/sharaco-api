@@ -86,6 +86,14 @@ async def get_project_documents(
         
         # Calculer les totaux
         totals = DocumentService.calculate_totals(items)
+
+        client_data = None
+        if doc.client:
+            client_data = {
+                "id": doc.client.id,
+                "name": doc.client.name,
+                "email": doc.client.email,
+            }
         
         response.append({
             "id": doc.id,
@@ -96,6 +104,7 @@ async def get_project_documents(
             "due_date": doc.due_date,
             "user_id": doc.user_id,
             "client_id": doc.client_id,
+            "client": client_data,
             "template_id": doc.template_id,
             "layout_style": doc.layout_style,
             "notes": doc.notes,
@@ -229,6 +238,11 @@ async def get_project(
         "updated_at": project.updated_at,
         "user_id": project.user_id,
         "client_id": project.client_id,
+        "client": {
+            "id": project.client.id,
+            "name": project.client.name,
+            "email": project.client.email,
+        } if project.client else None,
         "documents_count": stats["documents_count"],
         "attachments": [
             {

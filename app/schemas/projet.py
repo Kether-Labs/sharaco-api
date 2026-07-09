@@ -4,7 +4,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 from app.models.projet import ProjectStatus, AttachmentType
-
+from app.schemas.document import ClientBrief
 
 class ProjectAttachmentRead(BaseModel):
     """Schéma de lecture pour les attachments."""
@@ -90,7 +90,7 @@ class ProjectRead(BaseModel):
     # Relations optionnelles
     documents_count: Optional[int] = None
     attachments: Optional[List[ProjectAttachmentRead]] = None
-
+    client: Optional[ClientBrief] = None
     model_config = {"from_attributes": True}
 
 

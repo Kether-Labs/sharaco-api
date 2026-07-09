@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
+from sqlalchemy import func
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
 from datetime import datetime, timezone
@@ -12,11 +13,12 @@ from typing import Optional
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.models.document import DocumentType, DocumentStatus
+from app.models.document import DocumentType, DocumentStatus,DocumentItem
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
 from app.utils.datetime import to_naive_utc 
 from datetime import datetime, timezone, timedelta
+
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -46,6 +48,81 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # 📄 LIVE PREVIEW (pas de sauvegarde DB) - DOIT ÊTRE EN PREMIER
 # ============================================================
+@router.get("/stats", response_model=dict)
+async def get_documents_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Récupère les statistiques des documents de l'utilisateur."""
+    logger.info(f"📊 GET /documents/stats")
+    
+    # ✅ REQUÊTE 1 : Compter les documents par statut (sans JOIN)
+    count_query = await db.execute(
+        select(
+            Document.status,
+            func.count(Document.id)  # ✅ Pas de JOIN, donc pas de duplication
+        )
+        .where(Document.user_id == current_user.id)
+        .group_by(Document.status)
+    )
+    
+    counts_by_status = {
+        row[0].value: row[1] 
+        for row in count_query.all()
+    }
+    
+    # ✅ REQUÊTE 2 : Calculer les totaux par statut (avec JOIN)
+    totals_query = await db.execute(
+        select(
+            Document.status,
+            func.coalesce(
+                func.sum(
+                    DocumentItem.quantity * DocumentItem.unit_price_cents +
+                    (DocumentItem.quantity * DocumentItem.unit_price_cents * DocumentItem.tax_rate / 100)
+                ), 0
+            )
+        )
+        .outerjoin(DocumentItem, DocumentItem.document_id == Document.id)
+        .where(Document.user_id == current_user.id)
+        .group_by(Document.status)
+    )
+    
+    totals_by_status = {
+        row[0].value: int(row[1])
+        for row in totals_query.all()
+    }
+    
+    # ✅ Combiner les résultats
+    all_statuses = set(counts_by_status.keys()) | set(totals_by_status.keys())
+    stats = {
+        status: {
+            "count": counts_by_status.get(status, 0),
+            "total_cents": totals_by_status.get(status, 0),
+        }
+        for status in all_statuses
+    }
+    
+    # Calculs globaux
+    total_documents = sum(s["count"] for s in stats.values())
+    total_revenue_cents = sum(s["total_cents"] for s in stats.values())
+    
+    # Taux de conversion
+    accepted_count = stats.get("ACCEPTED", {}).get("count", 0)
+    # ✅ Seuls les devis envoyés (SENT + VIEWED + ACCEPTED + REFUSED) comptent pour le taux
+    total_evaluated = (
+        stats.get("SENT", {}).get("count", 0) +
+        stats.get("VIEWED", {}).get("count", 0) +
+        stats.get("ACCEPTED", {}).get("count", 0) +
+        stats.get("REFUSED", {}).get("count", 0)
+    )
+    conversion_rate = (accepted_count / total_evaluated * 100) if total_evaluated > 0 else 0
+    
+    return {
+        "by_status": stats,
+        "total_documents": total_documents,
+        "total_revenue_cents": total_revenue_cents,
+        "conversion_rate": round(conversion_rate, 1),
+    }
 
 @router.post("/preview", response_class=HTMLResponse)
 async def preview_document_live(
@@ -994,6 +1071,14 @@ async def list_documents(
     result = []
     for doc in documents:
         totals = DocumentService.calculate_totals(doc.items)
+
+        client_data = None
+        if doc.client:
+            client_data = {
+                "id": doc.client.id,
+                "name": doc.client.name,
+                "email": doc.client.email,
+            }
         result.append({
             "id": doc.id,
             "type": doc.type,
@@ -1005,6 +1090,7 @@ async def list_documents(
             "template_id": doc.template_id,
             "layout_style": doc.layout_style,
             "grand_total_cents": totals["grand_total_cents"],
+            "client": client_data,
             "project_id": getattr(doc, 'project_id', None)
         })
     return result
