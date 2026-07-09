@@ -1,0 +1,74 @@
+<!-- app/templates/emails/document_refused.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #0f172a; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 40px 30px; color: white; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 700; }
+        .content { padding: 30px; }
+        .info-box { background-color: #fef3c7; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+        .reason-box { background-color: #fff7ed; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #fb923c; }
+        .amount { font-size: 28px; font-weight: 800; color: #d97706; margin: 10px 0 0; }
+        .button { display: inline-block; background-color: #f59e0b; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 20px; }
+        .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>❌ Devis refusé</h1>
+            <p style="margin: 10px 0 0; opacity: 0.9;">Votre client a décliné votre proposition</p>
+        </div>
+        
+        <div class="content">
+            <p>Bonjour {{ user_name }},</p>
+            <p>Votre devis a été <strong style="color: #d97706;">refusé</strong> par votre client.</p>
+            
+            <div class="info-box">
+                <p style="margin: 0 0 5px; font-size: 14px; color: #78350f;">Numéro du devis</p>
+                <p style="margin: 0 0 15px; font-weight: 700; font-size: 18px; color: #78350f;">{{ document_number }}</p>
+                
+                <p style="margin: 0 0 5px; font-size: 14px; color: #78350f;">Client</p>
+                <p style="margin: 0 0 15px; font-weight: 700; font-size: 18px; color: #78350f;">{{ client_name }}</p>
+                
+                <p style="margin: 0 0 5px; font-size: 14px; color: #78350f;">Montant proposé</p>
+                <p class="amount">{{ amount }}</p>
+                
+                <p style="margin: 15px 0 0; font-size: 13px; color: #92400e;">
+                    Refusé le {{ refused_at }}
+                </p>
+            </div>
+            
+            {% if refusal_reason and refusal_reason != "Aucun motif précisé" %}
+            <div class="reason-box">
+                <p style="margin: 0 0 10px; font-size: 14px; font-weight: 700; color: #9a3412;">
+                    💬 Motif du refus :
+                </p>
+                <p style="margin: 0; font-style: italic; color: #7c2d12;">
+                    "{{ refusal_reason }}"
+                </p>
+            </div>
+            {% endif %}
+            
+            <div style="text-align: center;">
+                <a href="{{ dashboard_url | default('#') }}" class="button">Voir le devis dans le dashboard</a>
+            </div>
+            
+            <p style="color: #64748b; font-size: 14px; margin-top: 30px;">
+                <strong>💡 Conseil :</strong> Contactez votre client pour comprendre ses besoins 
+                et lui proposer une nouvelle offre adaptée.
+            </p>
+            
+            <p>Courage,<br><strong>L'équipe Sharaco</strong></p>
+        </div>
+        
+        <div class="footer">
+            <p>Notification envoyée via Sharaco</p>
+        </div>
+    </div>
+</body>
+</html>

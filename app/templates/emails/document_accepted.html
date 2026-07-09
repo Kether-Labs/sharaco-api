@@ -1,0 +1,67 @@
+<!-- app/templates/emails/document_accepted.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #0f172a; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; color: white; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 700; }
+        .content { padding: 30px; }
+        .success-icon { font-size: 64px; text-align: center; margin: 20px 0; }
+        .info-box { background-color: #ecfdf5; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #10b981; }
+        .amount { font-size: 28px; font-weight: 800; color: #10b981; margin: 10px 0 0; }
+        .button { display: inline-block; background-color: #10b981; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 20px; }
+        .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ Devis accepté !</h1>
+            <p style="margin: 10px 0 0; opacity: 0.9;">Bonne nouvelle</p>
+        </div>
+        
+        <div class="content">
+            <div class="success-icon">🎉</div>
+            
+            <p>Bonjour {{ user_name }},</p>
+            <p>Votre devis a été <strong style="color: #10b981;">accepté</strong> par votre client !</p>
+            
+            <div class="info-box">
+                <p style="margin: 0 0 5px; font-size: 14px; color: #475569;">Numéro du devis</p>
+                <p style="margin: 0 0 15px; font-weight: 700; font-size: 18px;">{{ document_number }}</p>
+                
+                <p style="margin: 0 0 5px; font-size: 14px; color: #475569;">Client</p>
+                <p style="margin: 0 0 15px; font-weight: 700; font-size: 18px;">{{ client_name }}</p>
+                
+                <p style="margin: 0 0 5px; font-size: 14px; color: #475569;">Signé par</p>
+                <p style="margin: 0 0 15px; font-weight: 700; font-size: 18px;">{{ signature_name }}</p>
+                
+                <p style="margin: 0 0 5px; font-size: 14px; color: #475569;">Montant</p>
+                <p class="amount">{{ amount }}</p>
+                
+                <p style="margin: 15px 0 0; font-size: 13px; color: #64748b;">
+                    Accepté le {{ accepted_at }}
+                </p>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{{ dashboard_url | default('#') }}" class="button">Voir dans le dashboard</a>
+            </div>
+            
+            <p style="color: #64748b; font-size: 14px; margin-top: 30px;">
+                Vous pouvez maintenant convertir ce devis en facture et commencer la prestation.
+            </p>
+            
+            <p>Félicitations,<br><strong>L'équipe Sharaco</strong></p>
+        </div>
+        
+        <div class="footer">
+            <p>Notification envoyée via Sharaco</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -172,3 +172,32 @@ class EmailService:
             subject=f"Facture {document_number} de {user_company}",
             html_content=html,
         )
+    
+    @staticmethod
+    async def send_notification(
+        to_email: str,
+        subject: str,
+        template: str,
+        context: dict,
+    ) -> dict:
+        """Envoie une notification par email avec un template."""
+        try:
+            logger.info(f"📧 Envoi notification à {to_email} avec template '{template}'")
+            
+            # Charger le template
+            tpl = email_env.get_template(template)
+            html_content = tpl.render(**context)
+            
+            # Envoyer via le provider configuré
+            result = await EmailService._send_email(
+                to_email=to_email,
+                subject=subject,
+                html_content=html_content,
+            )
+            
+            logger.info(f"✅ Notification envoyée: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi notification: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}

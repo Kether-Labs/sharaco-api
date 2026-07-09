@@ -417,9 +417,8 @@ async def refuse_document_as_client(
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
     
-    # ✅ IDEMPOTENCE : Si déjà refusé, retourner succès
+    # Idempotence
     if document.status == DocumentStatus.REFUSED:
-        logger.info(f"ℹ️ Document {document.id} déjà refusé")
         return {
             "message": "Devis déjà refusé",
             "status": document.status,
@@ -430,7 +429,7 @@ async def refuse_document_as_client(
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
-            detail=f"Ce document ne peut pas être refusé (statut: {document.status})"
+            detail=f"Ce document ne peut pas être refusé (statut: {document.status.value})"
         )
     
     # Mettre à jour
@@ -443,8 +442,12 @@ async def refuse_document_as_client(
     
     logger.info(f"❌ Devis {document.id} refusé")
     
-    # Notifier l'utilisateur
-    await NotificationService.notify_document_refused(document.id, db)
+    # ✅ NOTIFIER - avec gestion d'erreur pour ne pas bloquer la réponse
+    try:
+        await NotificationService.notify_document_refused(document.id, db)
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la notification: {e}", exc_info=True)
+        # On ne bloque pas la réponse si la notification échoue
     
     return {
         "message": "Devis refusé",
