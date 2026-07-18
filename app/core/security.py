@@ -4,7 +4,7 @@ from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto",bcrypt__rounds=12)
 
 
 def create_access_token(subject: Union[str, Any]) -> str:
@@ -13,6 +13,24 @@ def create_access_token(subject: Union[str, Any]) -> str:
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+def hash_password(password: str) -> str:
+    """
+    Hash un mot de passe avec bcrypt.
+    
+    Args:
+        password: Le mot de passe en clair
+        
+    Returns:
+        Le hash bcrypt (commence par $2b$)
+        
+    Example:
+        >>> hash_password("MySecureP@ss123")
+        '$2b$12$LQv3c1yqBo9RvGzK...'
+    """
+    if not password:
+        raise ValueError("Le mot de passe ne peut pas être vide")
+    
+    return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)

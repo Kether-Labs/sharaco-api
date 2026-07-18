@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status,Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_db
@@ -10,7 +10,10 @@ from app.schemas.user import UserCreate, UserRead, Token
 from app.core.security import verify_password, create_access_token
 import logging
 from app.schemas.auth import RegisterRequest, RegisterResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["auth"])
 
@@ -30,10 +33,11 @@ async def register(
         user = await UserService.register_user(db, data)
         
         # Générer le token JWT (auto-login après inscription)
-        access_token = create_access_token(data={"sub": str(user.id)})
+        access_token = create_access_token(subject=str(user.id))
         
         return RegisterResponse(
             message="Compte créé avec succès",
+            token_type="bearer",
             user_id=str(user.id),
             access_token=access_token,
         )
@@ -71,10 +75,21 @@ async def read_current_user(
     """Retourne le profil de l'utilisateur connecté."""
     return current_user
 
-@router.post("/verify-email")
+@router.post("/verify-email",response_model=bool)
+@limiter.limit("10/minute") 
 async def verify_email(
+    request:Request,
     email: str,
     db: AsyncSession = Depends(get_db),
 ):
     """Vérifie si l'email est déjà pris."""
-    return await AuthService.verifyIfEmailExist(db, email)
+
+    normalized_email = email.strip().lower()
+    
+    # Vérifier le format
+    import re
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", normalized_email):
+        return False
+
+    user = await AuthService.verifyIfEmailExist(db, email)
+    return user is not None

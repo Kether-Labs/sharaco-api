@@ -4,7 +4,8 @@ from app.models.user import User
 from app.core.security import get_password_hash
 from typing import Optional
 from app.schemas.auth import RegisterRequest
-
+from app.core.security import hash_password
+from app.utils.emails import normalize_email
 
 class UserService:
     @staticmethod
@@ -56,7 +57,7 @@ class UserService:
         await db.commit()
         await db.refresh(user)
         
-        logger.info(f"✅ Nouvel utilisateur inscrit: {user.email} ({user.company_name})")
+        
         
         return user
     @staticmethod

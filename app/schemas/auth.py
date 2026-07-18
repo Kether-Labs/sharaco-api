@@ -17,16 +17,20 @@ class RegisterRequest(BaseModel):
         """Normalise l'email."""
         return v.strip().lower()
     
-    @field_validator("password")
+    @field_validator("password", mode="before")
     @classmethod
-    def validate_password(cls, v: str) -> str:
-        """Valide la force du mot de passe."""
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Le mot de passe doit contenir au moins une majuscule")
-        if not re.search(r"[a-z]", v):
-            raise ValueError("Le mot de passe doit contenir au moins une minuscule")
-        if not re.search(r"\d", v):
-            raise ValueError("Le mot de passe doit contenir au moins un chiffre")
+    def validate_password(cls, v):
+        if not isinstance(v, str):
+            raise ValueError("Le mot de passe doit être une chaîne")
+        
+        v = v.strip()
+        
+        if len(v) < 8:
+            raise ValueError("Le mot de passe doit contenir au moins 8 caractères")
+        
+        if len(v) > 128:
+            raise ValueError("Le mot de passe est trop long (max 128 caractères)")
+        
         return v
     
     @field_validator("full_name")
