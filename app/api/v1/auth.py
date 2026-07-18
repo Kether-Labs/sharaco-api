@@ -7,34 +7,48 @@ from app.services.userService import UserService
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, Token
+from app.core.security import verify_password, create_access_token
+import logging
+from app.schemas.auth import RegisterRequest, RegisterResponse
+
 
 router = APIRouter(tags=["auth"])
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+logger = logging.getLogger(__name__)
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(
-    user_data: UserCreate,
+    data: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """Inscription d'un nouvel utilisateur."""
-    # Vérifier si l'email est déjà pris
-    existing = await UserService.get_by_email(db, user_data.email)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Un compte avec cet email existe déjà",
+    logger.info(f"📝 POST /auth/register - Email: {data.email}")
+    
+    try:
+        # Créer l'utilisateur
+        user = await UserService.register_user(db, data)
+        
+        # Générer le token JWT (auto-login après inscription)
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
+        return RegisterResponse(
+            message="Compte créé avec succès",
+            user_id=str(user.id),
+            access_token=access_token,
         )
-
-    user = await UserService.create_user(
-        db=db,
-        email=user_data.email,
-        password=user_data.password,
-        company_name=user_data.company_name,
-        address=user_data.address,
-        tax_id=user_data.tax_id,
-        payment_info=user_data.payment_info,
-    )
-    return user
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"❌ Erreur inscription: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de la création du compte"
+        )
 
 
 @router.post("/login", response_model=Token)

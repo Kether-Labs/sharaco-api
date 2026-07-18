@@ -20,6 +20,7 @@ class AuthService:
 
     async def verifyIfEmailExist(db: AsyncSession, email: str):
         user = await UserService.get_by_email(db, email)
+        
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

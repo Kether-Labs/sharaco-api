@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     tax_id: Optional[str] = None  # SIRET, NIF, etc.
     payment_info: Optional[str] = None # IBAN, Mobile Money, etc.
 
+    full_name: Optional[str] = Field(default=None, max_length=100)
     clients: List["Client"] = Relationship(back_populates="owner")
     documents: List["Document"] = Relationship(back_populates="owner")
     templates: List["DocumentTemplate"] = Relationship(back_populates="owner")

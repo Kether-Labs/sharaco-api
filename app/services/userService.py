@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.core.security import get_password_hash
 from typing import Optional
+from app.schemas.auth import RegisterRequest
 
 
 class UserService:
@@ -30,11 +31,44 @@ class UserService:
         await db.refresh(db_user)
         return db_user
 
+
+    @staticmethod
+    async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
+        """Crée un nouvel utilisateur."""
+        
+        # 1. Vérifier que l'email n'existe pas déjà
+        existing = await UserService.get_by_email(db, data.email)
+        if existing:
+            raise ValueError("Cet email est déjà utilisé")
+        
+        # 2. Créer l'utilisateur
+        user = User(
+            email=normalize_email(data.email),
+            hashed_password=hash_password(data.password),
+            full_name=data.full_name.strip(),
+            company_name=data.company_name.strip(),
+            phone=data.phone.strip() if data.phone else None,
+            is_active=True,
+            is_verified=False,  # Pour plus tard (vérification email)
+        )
+        
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        logger.info(f"✅ Nouvel utilisateur inscrit: {user.email} ({user.company_name})")
+        
+        return user
     @staticmethod
     async def get_by_email(db: AsyncSession, email: str) -> User | None:
-        statement = select(User).where(User.email == email)
+        normalized_email = email.strip().lower()
+        statement = select(User).where(User.email == normalized_email)
+        
         result = await db.execute(statement)
-        return result.scalar_one_or_none()
+        user = result.scalar_one_or_none()  # ✅ Une seule fois
+        
+        
+        return user
 
     @staticmethod
     async def get_by_id(db: AsyncSession, user_id: str) -> User | None:
