@@ -16,6 +16,7 @@ class UserCreate(BaseModel):
 class UserRead(BaseModel):
     id: UUID
     email: str
+    full_name:str
     company_name: Optional[str] = None
     address: Optional[str] = None
     tax_id: Optional[str] = None
