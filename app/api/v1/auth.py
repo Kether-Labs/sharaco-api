@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status,Request
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_db
 from app.services.authService import AuthService
 from app.services.userService import UserService
 from app.core.deps import get_current_user
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, Token
 from app.core.security import verify_password, create_access_token
@@ -12,9 +14,11 @@ import logging
 from app.schemas.auth import RegisterRequest, RegisterResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from authlib.integrations.starlette_client import OAuth
 
 limiter = Limiter(key_func=get_remote_address)
 
+oauth = OAuth()
 router = APIRouter(tags=["auth"])
 
 
@@ -66,6 +70,34 @@ async def login(
         email=form_data.username,
         password=form_data.password,
     )
+
+
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    """Redirige l'utilisateur vers la page de connexion Google."""
+    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/google/callback")
+async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    """Reçoit le callback de Google et redirige vers le frontend."""
+    try:
+        result = await AuthService.handle_google_callback(request, db)
+        
+        if result["action"] == "login":
+            # Redirection vers le dashboard avec le token en paramètre (ou via cookie HTTP-only)
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/dashboard?token={result['access_token']}"
+            )
+        else:
+            # Redirection vers la page de complétion de profil
+            return RedirectResponse(url=result["redirect_url"])
+            
+    except Exception as e:
+        # En cas d'erreur, rediriger vers le login avec un message
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=google_auth_failed")
 
 
 @router.get("/me", response_model=UserRead)
