@@ -3,7 +3,7 @@ from typing import Any, Union
 from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
-
+from jose import jwt, JWTError
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto",bcrypt__rounds=12)
 
 
@@ -34,7 +34,20 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
-
+def decode_access_token(token: str) -> dict:
+    """
+    Décode et vérifie un token JWT.
+    Lève une ValueError si le token est invalide ou expiré.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+        return payload
+    except JWTError as e:
+        raise ValueError("Token invalide ou expiré") from e
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
