@@ -203,5 +203,6 @@ async def verify_email(
         return False
 
     user = await AuthService.verifyIfEmailExist(db, email)
-   
-    return user is not None
+    if user:
+        return True
+    return False

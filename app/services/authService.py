@@ -78,4 +78,8 @@ class AuthService:
         user = await UserService.get_by_email(db, email)
         
         
-        return user is not None
+        if not user:
+            
+            return False
+        return True
+        
