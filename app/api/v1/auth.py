@@ -108,7 +108,7 @@ async def complete_google_registration(
 
         existing = await UserService.get_by_email(db, email)
         if existing:
-            print(f"✅ lelvelellejfhzhhh")
+            
             raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
 
         random_password = secrets.token_urlsafe(32)
@@ -203,4 +203,5 @@ async def verify_email(
         return False
 
     user = await AuthService.verifyIfEmailExist(db, email)
+   
     return user is not None
