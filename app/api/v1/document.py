@@ -1183,7 +1183,14 @@ async def create_document(
             project_id=document_data.project_id,
         )
         if data.payment_schedule:
-            await PaymentScheduleService.set_schedule(db, document, data.payment_schedule)
+            try:
+                await PaymentScheduleService.set_schedule(
+                    db,
+                    document,
+                    [m.model_dump() for m in data.payment_schedule],
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         logger.error(f"❌ Erreur: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

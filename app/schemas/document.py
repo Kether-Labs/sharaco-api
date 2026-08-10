@@ -102,6 +102,14 @@ class SharedDocumentRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MilestoneInput(BaseModel):
+    sequence: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=255)
+    percent: float = Field(ge=0, le=100)
+    description: Optional[str] = None
+    trigger_date: Optional[datetime] = None
+
+
 class DocumentCreate(BaseModel):
     """Création d'un document."""
     id: Optional[UUID] = None
@@ -110,6 +118,7 @@ class DocumentCreate(BaseModel):
     layout_style: str = "classic"
     template_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
+    payment_schedule: Optional[list[MilestoneInput]] = None
     items: List[DocumentItemCreate]
     notes: Optional[str] = None
     project_id: Optional[UUID] = Field(None, description="ID du projet associé (optionnel)")

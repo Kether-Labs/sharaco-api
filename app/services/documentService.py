@@ -271,7 +271,9 @@ class DocumentService:
     async def get_by_id(db: AsyncSession, document_id: UUID, user_id: UUID) -> Document | None:
         statement = (
             select(Document)
-            .options(selectinload(Document.items))
+            .options(selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.payment_schedule))
             .where(Document.id == document_id, Document.user_id == user_id)
         )
         result = await db.execute(statement)
@@ -290,7 +292,7 @@ class DocumentService:
     ) -> list[Document]:
         statement = (
             select(Document)
-            .options(selectinload(Document.items), selectinload(Document.client))
+            .options(selectinload(Document.items), selectinload(Document.client),selectinload(Document.payment_schedule))
             .where(Document.user_id == user_id)
         )
         if type:

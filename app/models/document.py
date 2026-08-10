@@ -45,7 +45,10 @@ class Document(SQLModel, table=True):
 
     payment_schedule: List["PaymentSchedule"] = Relationship(
         back_populates="document",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "foreign_keys": "PaymentSchedule.document_id",  # ← LA CORRECTION
+        },
     )
 
     source_document_id: Optional[UUID] = Field(
@@ -53,6 +56,13 @@ class Document(SQLModel, table=True):
         foreign_key="document.id",
         index=True,
         description="Si FACTURE : UUID du devis qui l'a générée",
+    )
+
+    source_document: Optional["Document"] = Relationship(
+        sa_relationship_kwargs={
+            "remote_side": "Document.id",
+            "foreign_keys": "Document.source_document_id",
+        },
     )
     origin: str = Field(
         default="manual",
