@@ -114,69 +114,48 @@ class DocumentService:
     #  ✅ NOUVEAU : handler d'acceptation (appelé quand le client signe)
     # ============================================================
     @staticmethod
-    async def handle_quote_acceptance(
-        db: AsyncSession,
-        quote: Document,
-    ) -> dict:
-        """
-        Traite l'acceptation d'un devis :
-        - Met le devis en ACCEPTED
-        - Crée une facture brouillon selon les settings de l'utilisateur
-        - Retourne {invoice, status} pour que le routeur puisse envoyer l'email si besoin
-        """
-        from app.services.notificationService import NotificationService
+    async def handle_quote_acceptance(db: AsyncSession, quote: Document) -> dict:
+    
+        from app.services.billingSettingsService import BillingSettingsService
+        from app.services.paymentScheduleService import PaymentScheduleService
 
-        # 1. Mettre à jour le devis
         quote.status = DocumentStatus.ACCEPTED
         quote.accepted_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(quote)
 
-        # 2. Récupérer les settings de facturation
         settings = await BillingSettingsService.get_or_create(db, quote.user_id)
+        first_invoice = None
 
-        invoice = None
+        # Charger l'échéancier
+        milestones = await PaymentScheduleService.get_by_document(db, quote.id)
 
-        # 3. Créer la facture si auto-création activée
         if settings.auto_create_invoice:
-            if settings.acompte_percent is not None:
-                # Facture d'acompte (ex: 30%)
-                invoice = await DocumentService.create_from_quote(
-                    db=db,
-                    quote=quote,
-                    kind=InvoiceType.ACOMPTE,
-                    percent=settings.acompte_percent,
-                    origin="auto",
-                )
+            if milestones:
+                # ✅ CAS ÉCHÉANCIER : facturer uniquement la 1ère échéance
+                first = next((m for m in milestones if m.sequence == 1), None)
+                if first:
+                    first_invoice = await PaymentScheduleService.invoice_milestone(
+                        db, first, quote, origin="auto"
+                    )
             else:
-                # Facture standard brouillon
-                invoice = await DocumentService.create_from_quote(
-                    db=db,
-                    quote=quote,
-                    kind=InvoiceType.STANDARD,
-                    origin="auto",
+                # ✅ CAS CLASSIQUE : facture standard brouillon
+                first_invoice = await DocumentService.create_from_quote(
+                    db=db, quote=quote, kind=InvoiceType.STANDARD, origin="auto"
                 )
 
-            # 4. Envoi auto UNIQUEMENT si l'utilisateur l'a activé (opt-in)
-            if settings.auto_send_invoice and invoice:
-                # TODO: appeler le service d'envoi d'email ici
-                # await EmailService.send_invoice(db, invoice)
-                invoice.status = DocumentStatus.SENT
-                invoice.sent_at = to_naive_utc(datetime.now(timezone.utc))
-                db.add(invoice)
-
-            # 5. Notifier le pro (in-app + email)
-            try:
-                await NotificationService.quote_accepted(db, quote, invoice)
-            except Exception as e:
-                logger.warning(f"Erreur notification quote_accepted: {e}")
+            if settings.auto_send_invoice and first_invoice:
+                first_invoice.status = DocumentStatus.SENT
+                first_invoice.sent_at = to_naive_utc(datetime.now(timezone.utc))
+                db.add(first_invoice)
 
         await db.flush()
         await db.refresh(quote)
 
         return {
             "quote": quote,
-            "invoice": invoice,
-            "auto_sent": bool(invoice and settings.auto_send_invoice),
+            "invoice": first_invoice,
+            "has_schedule": bool(milestones),
+            "auto_sent": bool(first_invoice and settings.auto_send_invoice),
         }
 
     # ============================================================

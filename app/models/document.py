@@ -43,6 +43,11 @@ class Document(SQLModel, table=True):
         description="STANDARD / ACOMPTE / SOLDE — uniquement pour FACTURE",
     )
 
+    payment_schedule: List["PaymentSchedule"] = Relationship(
+        back_populates="document",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
     source_document_id: Optional[UUID] = Field(
         default=None,
         foreign_key="document.id",

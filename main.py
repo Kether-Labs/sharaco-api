@@ -11,6 +11,8 @@ from app.api.v1.project import router as project_router
 from starlette.middleware.sessions import SessionMiddleware 
 from app.api.v1.activity import router as activity_router
 from app.api.v1.billing_settings import router as billing_settings_router
+from app.api.v1.payment_schedule import router as payment_schedule_router
+
 
 app = FastAPI(title="Sharaco API", version="0.1.0")
 
@@ -44,7 +46,7 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboar
 app.include_router(project_router, prefix="/api/v1/projects", tags=["projects"])
 app.include_router(activity_router, prefix="/api/v1/activity", tags=["activity"])
 app.include_router(billing_settings_router, prefix="/api/v1/billing-settings", tags=["billing-settings"])
-
+app.include_router(payment_schedule_router, prefix="/api/v1/payment-schedule", tags=["payment-schedule"])
 
 @app.get("/")
 async def root():

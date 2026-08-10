@@ -6,6 +6,7 @@ from sqlalchemy import func
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
 from datetime import datetime, timezone
+from app.services.paymentScheduleService import PaymentScheduleService
 from app.core.config import settings
 from app.services.notificationService import NotificationService
 from uuid import UUID
@@ -1181,7 +1182,8 @@ async def create_document(
             # ✅ NOUVEAU : Passer le project_id
             project_id=document_data.project_id,
         )
-        logger.info(f"✅ Document créé: {document.id}")
+        if data.payment_schedule:
+            await PaymentScheduleService.set_schedule(db, document, data.payment_schedule)
     except ValueError as e:
         logger.error(f"❌ Erreur: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
