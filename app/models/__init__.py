@@ -5,10 +5,11 @@ from .document import Document, DocumentItem, DocumentType, DocumentStatus
 from .document_template import DocumentTemplate
 from .reminder import ReminderConfig, ReminderLog, ReminderStatus, DocumentView
 from .projet import Project, ProjectAttachment
+from .billing_settings import BillingSettings
 __all__ = [
     "SQLModel", "User", "Client",
     "Document", "DocumentItem", "DocumentType", "DocumentStatus",
     "DocumentTemplate",
     "ReminderConfig", "ReminderLog", "ReminderStatus", "DocumentView",
-    "Project","ProjectAttachment"
+    "Project","ProjectAttachment", "BillingSettings"
 ]

@@ -14,6 +14,10 @@ class DocumentType(str, Enum):
     DEVIS = "DEVIS"
     FACTURE = "FACTURE"
 
+class InvoiceType(str, Enum):
+    STANDARD = "STANDARD"   # montant total
+    ACOMPTE = "ACOMPTE"     # avance à la commande
+    SOLDE = "SOLDE"         # reste à payer
 
 class DocumentStatus(str, Enum):
     DRAFT = "DRAFT"
@@ -34,6 +38,21 @@ class Document(SQLModel, table=True):
     status: DocumentStatus = Field(default=DocumentStatus.DRAFT)
     number: Optional[str] = Field(default=None, index=True)
 
+    invoice_type: Optional[str] = Field(
+        default=None,
+        description="STANDARD / ACOMPTE / SOLDE — uniquement pour FACTURE",
+    )
+
+    source_document_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="document.id",
+        index=True,
+        description="Si FACTURE : UUID du devis qui l'a générée",
+    )
+    origin: str = Field(
+        default="manual",
+        description="'manual' (utilisateur) ou 'auto' (généré à l'acceptation)",
+    )
     created_at: datetime = Field(default_factory=_utcnow_naive)
     due_date: Optional[datetime] = None
     sent_at: Optional[datetime] = None  # Date d'envoi par email
