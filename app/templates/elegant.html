@@ -225,10 +225,9 @@
            ✨ ÉCHÉANCIER COMPACT (table avec timeline)
         ══════════════════════════════════════════════════════════════ */
         .schedule-section {
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
+    margin-top: 24px;
+    break-inside: auto;  /* ← autorise la coupure */
+}
 
         .schedule-title-bar {
             display: table;
@@ -277,7 +276,9 @@
             border: 1px solid #e5e7eb;
             border-top: none;
         }
-
+.schedule-table thead {
+    display: table-header-group;  /* N°, Échéance, Part... répétés */
+}
         .schedule-table thead th {
             background: #f9fafb;
             padding: 8px 12px;
@@ -630,7 +631,7 @@
                 <!-- Barre de titre avec badge -->
                 <div class="schedule-title-bar">
                     <div class="schedule-title-bar-left">
-                        <div class="schedule-title">📅 Échéancier de paiement</div>
+                        <div class="schedule-title">Échéancier de paiement</div>
                     </div>
                     <div class="schedule-title-bar-right">
                         <span class="schedule-badge">
@@ -678,19 +679,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="3">
-                                <span class="schedule-total-label">Total échéancier</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="schedule-total-percent">{{ total_percent }}%</span>
-                            </td>
-                            <td class="text-right">
-                                <span class="schedule-total-amount">{{ "%.2f"|format(total_amount / 100) }} {{ currency }}</span>
-                            </td>
-                        </tr>
-                    </tfoot>
+                   
                 </table>
 
                 <!-- Note compacte -->
@@ -715,19 +704,7 @@
                     </div>
                     {% endif %}
 
-                    <div class="footer-section">
-                        <div class="footer-title">Termes & conditions</div>
-                        <div class="footer-text">
-                            {% if template.footer_text %}
-                            {{ template.footer_text }}
-                            {% else %}
-                            Ce devis est valable 1 mois à compter de sa date d'émission.
-                            {% if document.due_date %}
-                            Validité jusqu'au {{ document.due_date.strftime('%d/%m/%Y') }}.
-                            {% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
+                    
                 </div>
 
                 <div class="footer-info-right">

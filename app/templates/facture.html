@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Facture {{ document.number or '' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: {{ template.primary_color or '#06b6d4' }};
+            --secondary: {{ template.secondary_color or '#8b5cf6' }};
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --line: #e5e7eb;
+            --soft: #f9fafb;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--ink);
+            line-height: 1.5;
+            background: #f3f4f6;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: white;
+            padding: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { background: white; }
+        }
+
+        /* ═══════ BANDEAU SUPÉRIEUR COMPACT ═══════ */
+        .invoice-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            padding: 28px 40px;
+            display: table;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .invoice-header::after {
+            content: '';
+            position: absolute;
+            top: -60px;
+            right: -40px;
+            width: 220px;
+            height: 220px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+        }
+
+        .header-left { display: table-cell; vertical-align: middle; }
+        .header-right { display: table-cell; vertical-align: middle; text-align: right; position: relative; z-index: 1; }
+
+        .doc-label {
+            font-family: 'Poppins', sans-serif;
+            font-size: 30pt;
+            font-weight: 800;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            line-height: 1;
+        }
+
+        .doc-number {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.92);
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        .doc-ref {
+            font-size: 10.5px;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+        }
+
+        .status-badge.paid { background: #10b981; border-color: #10b981; }
+        .status-badge.pending { background: #f59e0b; border-color: #f59e0b; }
+
+        .header-dates {
+            margin-top: 10px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .header-dates strong { font-weight: 700; }
+
+        /* ═══════ PARTIES (émetteur / client) ═══════ */
+        .parties {
+            display: table;
+            width: 100%;
+            padding: 24px 40px 0 40px;
+        }
+
+        .party { display: table-cell; vertical-align: top; width: 50%; }
+        .party + .party { padding-left: 30px; }
+
+        .party-label {
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            margin-bottom: 6px;
+            padding-left: 10px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .party-name {
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 2px;
+        }
+
+        .party-text {
+            font-size: 10.5px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        /* ═══════ TABLEAU DES LIGNES ═══════ */
+        .items-block { padding: 22px 40px 0 40px; }
+
+        .items-table { width: 100%; border-collapse: collapse; }
+
+        .items-table thead th {
+            background: var(--soft);
+            font-family: 'Poppins', sans-serif;
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            text-align: left;
+            padding: 9px 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .items-table th.text-right { text-align: right; }
+        .items-table th:first-child { border-radius: 8px 0 0 0; }
+        .items-table th:last-child { border-radius: 0 8px 0 0; }
+
+        .items-table td {
+            padding: 10px 12px;
+            font-size: 11.5px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        .items-table tbody tr:last-child td { border-bottom: none; }
+        .text-right { text-align: right !important; }
+        .font-semibold { font-weight: 600; }
+
+        /* ═══════ TOTAUX ═══════ */
+        .totals-block {
+            display: table;
+            width: 100%;
+            padding: 14px 40px 0 40px;
+        }
+
+        .totals-spacer { display: table-cell; width: 55%; }
+        .totals-box { display: table-cell; width: 45%; vertical-align: top; }
+
+        .total-row { display: table; width: 100%; padding: 5px 0; }
+
+        .total-label {
+            display: table-cell;
+            text-align: right;
+            padding-right: 16px;
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .total-value {
+            display: table-cell;
+            text-align: right;
+            width: 120px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink);
+            padding: 4px 12px;
+            background: var(--soft);
+            border-radius: 14px;
+        }
+
+        .total-row.grand { margin-top: 8px; }
+
+        .total-row.grand .total-label {
+            font-family: 'Poppins', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .total-row.grand .total-value {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 9px 16px;
+            border-radius: 18px;
+        }
+
+        /* ═══════ ENCART PAIEMENT ═══════ */
+        .payment-box {
+            margin: 18px 40px 0 40px;
+            padding: 14px 18px;
+            background: var(--soft);
+            border-left: 3px solid var(--primary);
+            border-radius: 8px;
+            display: table;
+            width: calc(100% - 80px);
+        }
+
+        .payment-col { display: table-cell; vertical-align: top; width: 50%; }
+        .payment-col + .payment-col { padding-left: 20px; }
+
+        .payment-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--ink);
+            margin-bottom: 5px;
+        }
+
+        .payment-text {
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-family: 'Inter', monospace;
+        }
+
+        /* ═══════ PIED DE PAGE LÉGAL ═══════ */
+        .legal-footer {
+            margin-top: auto;
+            padding: 16px 40px;
+            border-top: 1px solid var(--line);
+            font-size: 8.5px;
+            color: var(--muted);
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        .legal-footer strong { color: var(--ink); }
+
+        /* Multi-pages */
+        .items-block, .totals-block, .payment-box { page-break-inside: avoid; }
+        .items-table tr { page-break-inside: avoid; }
+        .items-table thead { display: table-header-group; }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <!-- ═══════ BANDEAU ═══════ -->
+    <div class="invoice-header">
+        <div class="header-left">
+            <div class="doc-label">Facture</div>
+            <div class="doc-number">n° {{ document.number or '—' }}</div>
+            {% if source_quote_number %}
+            <div class="doc-ref">Réf. devis : {{ source_quote_number }}</div>
+            {% endif %}
+        </div>
+        <div class="header-right">
+            {% if document.status.value == 'PAID' %}
+                <span class="status-badge paid">✓ Payée</span>
+            {% else %}
+                <span class="status-badge pending">En attente</span>
+            {% endif %}
+            <div class="header-dates">
+                Émise le <strong>{{ document.created_at.strftime('%d/%m/%Y') }}</strong><br>
+                {% if document.due_date %}
+                À régler avant le <strong>{{ document.due_date.strftime('%d/%m/%Y') }}</strong>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ PARTIES ═══════ -->
+    <div class="parties">
+        <div class="party">
+            <div class="party-label">Émetteur</div>
+            <div class="party-name">{{ user.company_name or user.email or 'Entreprise' }}</div>
+            <div class="party-text">
+                {% if user.address %}{{ user.address | replace('\n', '<br>') | safe }}<br>{% endif %}
+                {% if user.email %}{{ user.email }}<br>{% endif %}
+                {% if user.phone %}{{ user.phone }}<br>{% endif %}
+                {% if user.tax_id %}SIRET : {{ user.tax_id }}{% endif %}
+            </div>
+        </div>
+        <div class="party">
+            <div class="party-label">Facturé à</div>
+            <div class="party-name">{{ client.name or 'Client' }}</div>
+            <div class="party-text">
+                {% if client.address %}{{ client.address | replace('\n', '<br>') | safe }}<br>{% endif %}
+                {% if client.email %}{{ client.email }}<br>{% endif %}
+                {% if client.phone %}{{ client.phone }}{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ LIGNES ═══════ -->
+    <div class="items-block">
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width: 55%;">Désignation</th>
+                    <th class="text-right">Qté</th>
+                    <th class="text-right">PU HT</th>
+                    <th class="text-right">TVA</th>
+                    <th class="text-right">Total HT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) / 100 %}
+                <tr>
+                    <td class="font-semibold">{{ item.description or 'Prestation' }}</td>
+                    <td class="text-right">{{ item.quantity or 1 }}</td>
+                    <td class="text-right">{{ "%.2f"|format((item.unit_price_cents or 0) / 100) }} {{ currency }}</td>
+                    <td class="text-right">{{ item.tax_rate }}%</td>
+                    <td class="text-right font-semibold">{{ "%.2f"|format(ht) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════ TOTAUX ═══════ -->
+    <div class="totals-block">
+        <div class="totals-spacer"></div>
+        <div class="totals-box">
+            <div class="total-row">
+                <div class="total-label">Sous-total HT</div>
+                <div class="total-value">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</div>
+            </div>
+            <div class="total-row">
+                <div class="total-label">TVA</div>
+                <div class="total-value">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</div>
+            </div>
+            <div class="total-row grand">
+                <div class="total-label">Total TTC</div>
+                <div class="total-value">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ PAIEMENT ═══════ -->
+    <div class="payment-box">
+        <div class="payment-col">
+            <div class="payment-title">Règlement</div>
+            <div class="payment-text">
+                Par virement bancaire<br>
+                {% if user.payment_info %}
+                {{ user.payment_info | replace('\n', '<br>') | safe }}
+                {% else %}
+                Coordonnées bancaires sur demande
+                {% endif %}
+            </div>
+        </div>
+        <div class="payment-col">
+            <div class="payment-title">Conditions</div>
+            <div class="payment-text">
+                Paiement à {{ 30 }} jours.<br>
+                Pénalités de retard : 3 × taux légal.<br>
+                Indemnité forfaitaire : 40 €.
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ MENTIONS LÉGALES ═══════ -->
+    <div class="legal-footer">
+        <strong>{{ user.company_name or '' }}</strong>
+        {% if user.tax_id %} — SIRET {{ user.tax_id }}{% endif %}
+        {% if user.vat_number %} — TVA {{ user.vat_number }}{% endif %}
+        <br>
+        En cas de retard de paiement, pénalités égales à 3 fois le taux d'intérêt légal ainsi qu'une indemnité
+        forfaitaire pour frais de recouvrement de 40 € (art. L441-10 du Code de commerce).
+        Pas d'escompte pour paiement anticipé.
+    </div>
+
+</div>
+</body>
+</html>

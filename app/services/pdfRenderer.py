@@ -3,6 +3,8 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from io import BytesIO
 from playwright.async_api import async_playwright
+from sqlmodel import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import Document, DocumentItem
 from app.models.document_template import DocumentTemplate
 from app.models.client import Client
@@ -20,13 +22,17 @@ class PDFRenderer:
 
     TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
-    LAYOUT_MAP = {
+    # ✅ Templates par type de document (devis ou facture)
+    QUOTE_LAYOUT_MAP = {
         "classic": "classic.html",
         "modern": "modern.html",
         "minimal": "minimal.html",
         "bold": "bold.html",
         "elegant": "elegant.html",
     }
+
+    # ✅ Template unique pour les factures (design épuré & légal)
+    INVOICE_TEMPLATE = "facture.html"
 
     DEFAULT_CURRENCY = "FCFA"
 
@@ -38,8 +44,15 @@ class PDFRenderer:
         )
         self._preview_cache: dict[str, bytes] = {}
 
-    def _get_layout_file(self, layout_style: str) -> str:
-        return self.LAYOUT_MAP.get(layout_style, "classic.html")
+    def _get_layout_file(self, layout_style: str, doc_type: DocumentType) -> str:
+        """
+        Retourne le fichier template selon le type de document.
+        - FACTURE → toujours facture.html (design épuré & légal)
+        - DEVIS → selon le layout_style choisi
+        """
+        if doc_type == DocumentType.FACTURE:
+            return self.INVOICE_TEMPLATE
+        return self.QUOTE_LAYOUT_MAP.get(layout_style, "classic.html")
 
     @staticmethod
     def _calculate_totals(items: list[DocumentItem]) -> dict:
@@ -60,6 +73,24 @@ class PDFRenderer:
             "grand_total_cents": grand_total_cents,
         }
 
+    # ✅ NOUVELLE MÉTHODE : charger le devis source (pour les factures)
+    async def _get_source_quote_number(self, db: AsyncSession, document: Document) -> str | None:
+        """
+        Récupère le numéro du devis d'origine si la facture en vient.
+        Retourne None si pas de lien.
+        """
+        if document.type != DocumentType.FACTURE or not document.source_document_id:
+            return None
+        
+        try:
+            stmt = select(Document).where(Document.id == document.source_document_id)
+            result = await db.execute(stmt)
+            source = result.scalar_one_or_none()
+            return source.number if source else None
+        except Exception as e:
+            logger.warning(f"Impossible de charger le devis source: {e}")
+            return None
+
     def _build_context(
         self,
         document: Document,
@@ -67,10 +98,11 @@ class PDFRenderer:
         user: User,
         client: Client,
         currency: str = None,
+        source_quote_number: str | None = None,
     ) -> dict:
         totals = self._calculate_totals(document.items)
 
-        return {
+        context = {
             "document": document,
             "template": template,
             "user": user,
@@ -78,9 +110,41 @@ class PDFRenderer:
             "items": document.items,
             "totals": totals,
             "currency": currency or self.DEFAULT_CURRENCY,
+            # ✅ NOUVEAU : pour les factures (liaison au devis d'origine)
+            "source_quote_number": source_quote_number,
         }
+        return context
 
-    def render_html(
+    async def render_html(
+        self,
+        document: Document,
+        template: DocumentTemplate,
+        user: User,
+        client: Client,
+        currency: str = None,
+        db: AsyncSession = None,  # ✅ OPTIONNEL (par défaut None)
+    ) -> str:
+        """
+        Rend le HTML d'un document (devis ou facture).
+        Nécessite une session DB pour charger les relations (devis source).
+        """
+        try:
+            layout_file = self._get_layout_file(template.layout_style, document.type)
+            tmpl = self.env.get_template(layout_file)
+            
+            # Charger le numéro du devis source pour les factures
+            source_quote_number = await self._get_source_quote_number(db, document)
+            
+            context = self._build_context(
+                document, template, user, client, currency, source_quote_number
+            )
+            return tmpl.render(**context)
+        except Exception as e:
+            logger.error(f"Erreur lors du rendu HTML: {e}", exc_info=True)
+            raise
+
+    # ✅ NOUVEAU : version SYNCHRONE pour le preview (pas besoin de DB)
+    def render_html_preview(
         self,
         document: Document,
         template: DocumentTemplate,
@@ -88,13 +152,17 @@ class PDFRenderer:
         client: Client,
         currency: str = None,
     ) -> str:
+        """
+        Rend le HTML pour le preview en temps réel (pas de DB).
+        Pour les factures de preview, on n'a pas de devis source réel.
+        """
         try:
-            layout_file = self._get_layout_file(template.layout_style)
+            layout_file = self._get_layout_file(template.layout_style, document.type)
             tmpl = self.env.get_template(layout_file)
             context = self._build_context(document, template, user, client, currency)
             return tmpl.render(**context)
         except Exception as e:
-            logger.error(f"Erreur lors du rendu HTML: {e}", exc_info=True)
+            logger.error(f"Erreur lors du rendu HTML preview: {e}", exc_info=True)
             raise
 
     def _get_mock_user(self) -> User:
@@ -115,16 +183,17 @@ class PDFRenderer:
         template: DocumentTemplate,
         user: User = None,
         currency: str = None,
+        doc_type: DocumentType = DocumentType.DEVIS,
     ) -> str:
-        """Rend un aperçu HTML avec des FAUSSES données."""
+        """Rend un aperçu HTML avec des FAUSSES données (devis ou facture)."""
         if user is None:
             user = self._get_mock_user()
 
         fake_doc = Document(
             id=uuid4(),
-            type=DocumentType.DEVIS,
-            status=DocumentStatus.DRAFT,
-            number="DEV-2026-001",
+            type=doc_type,
+            status=DocumentStatus.DRAFT if doc_type == DocumentType.DEVIS else DocumentStatus.SENT,
+            number="DEV-2026-001" if doc_type == DocumentType.DEVIS else "FACT-2026-001",
             created_at=datetime.now(timezone.utc),
             due_date=datetime.now(timezone.utc),
             user_id=user.id,
@@ -169,7 +238,7 @@ class PDFRenderer:
         ]
         fake_doc.items = fake_items
 
-        return self.render_html(fake_doc, template, user, fake_client, currency)
+        return self.render_html_preview(fake_doc, template, user, fake_client, currency)
 
     async def _generate_screenshot(self, html_string: str) -> bytes:
         """Génère un screenshot PNG à partir du HTML."""
@@ -234,6 +303,7 @@ class PDFRenderer:
                 template=mock_template,
                 user=None,
                 currency=currency,
+                doc_type=DocumentType.DEVIS,  # Preview publique = toujours devis
             )
 
             screenshot = await self._generate_screenshot(html_string)
@@ -303,14 +373,16 @@ class PDFRenderer:
 
     async def render_pdf(
         self,
+        db: AsyncSession,
         document: Document,
         template: DocumentTemplate,
         user: User,
         client: Client,
         currency: str = None,
     ) -> BytesIO:
+        """Génère un PDF pour un document réel (avec accès DB)."""
         try:
-            html_string = self.render_html(document, template, user, client, currency)
+            html_string = await self.render_html(db, document, template, user, client, currency)
 
             async with async_playwright() as p:
                 browser = await p.chromium.launch(

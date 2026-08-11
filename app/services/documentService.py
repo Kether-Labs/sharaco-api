@@ -286,7 +286,7 @@ class DocumentService:
         )
 
         # 5. Rendu HTML
-        return pdf_renderer.render_html(
+        return pdf_renderer.render_html_preview(
             document=fake_doc,
             template=template,
             user=user,

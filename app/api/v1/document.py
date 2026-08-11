@@ -180,7 +180,7 @@ async def preview_document_pdf(
     db: AsyncSession = Depends(get_db),
 ):
     """Génère un PDF sans sauvegarder en DB (Playwright)."""
-    logger.info(f"📄 POST /preview/pdf - layout_style: {preview_data.layout_style}")
+    print(f"📥 PDF - payment_schedule reçu: {preview_data.payment_schedule}")
     
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
@@ -215,6 +215,7 @@ async def preview_document_pdf(
         footer_text=preview_data.footer_text,
         show_bank_details=preview_data.show_bank_details,
         show_tax_id=preview_data.show_tax_id,
+        payment_schedule=[m.model_dump() for m in preview_data.payment_schedule] if preview_data.payment_schedule else None,
         reference=preview_data.reference,
     )
 
@@ -777,7 +778,7 @@ async def preview_document(
 
     template = await _get_document_template(db, document, current_user)
 
-    html_content = pdf_renderer.render_html(
+    html_content = pdf_renderer.render_html_preview(
         document=document,
         template=template,
         user=current_user,
@@ -1039,7 +1040,7 @@ async def get_document_preview_png(
     logger.info(f"🖼️ Template layout_style: {template.layout_style}")
 
     # Générer le HTML
-    html_content = pdf_renderer.render_html(
+    html_content = pdf_renderer.render_html_preview(
         document=document,
         template=template,
         user=current_user,
