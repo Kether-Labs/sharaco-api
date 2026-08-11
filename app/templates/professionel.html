@@ -1,20 +1,24 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ document.type.value }} - {{ document.number }}</title>
-    <!-- Premium Typography -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/style.css">
     <style>
         /* ══════════════════════════════════════
            PROFESSIONAL DRIVING SCHOOL THEME
-           Aesthetic: Bold, High-Contrast, Modern
-           Color Palette: Yellow (#FFD700), Dark Gray (#1A1A1A)
         ══════════════════════════════════════ */
 
         :root {
-            --primary: {{ template.primary_color or '#FFD700' }};
+            --primary: {
+                    {
+                    template.primary_color or '#FFD700'
+                }
+            }
+
+            ;
             --primary-foreground: #1A1A1A;
             --dark: #1A1A1A;
             --zinc-100: #F4F4F5;
@@ -22,13 +26,14 @@
             --zinc-500: #71717A;
             --zinc-900: #18181B;
 
-            /* A4 Dimensions */
             --a4-width: 210mm;
             --a4-height: 297mm;
             --margin: 15mm;
         }
 
-        *, *::before, *::after {
+        *,
+        *::before,
+        *::after {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -51,7 +56,7 @@
             background: white;
             width: var(--a4-width);
             min-height: var(--a4-height);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
             position: relative;
             display: flex;
             flex-direction: column;
@@ -59,12 +64,25 @@
         }
 
         @media print {
-            body { background: white; padding: 0; }
-            .sheet { box-shadow: none; margin: 0; width: 100%; height: 100%; }
-            @page { size: A4; margin: 0; }
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .sheet {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+            @page {
+                size: A4;
+                margin: 0;
+            }
         }
 
-        /* ── Header Design ── */
+        /* ── Header ── */
         .header {
             display: grid;
             grid-template-columns: 1.2fr 1fr;
@@ -77,10 +95,8 @@
             display: flex;
             align-items: center;
             gap: 20px;
-            position: relative;
         }
 
-        /* Car Icon SVG Placeholder */
         .logo-box {
             background: var(--dark);
             width: 80px;
@@ -115,7 +131,6 @@
             justify-content: center;
             align-items: flex-end;
             padding: var(--margin);
-            position: relative;
         }
 
         .doc-type-label {
@@ -127,7 +142,7 @@
             opacity: 0.9;
         }
 
-        /* ── Meta Info Strip ── */
+        /* ── Meta Strip ── */
         .meta-strip {
             background: var(--zinc-100);
             display: flex;
@@ -208,8 +223,14 @@
             letter-spacing: 0.05em;
         }
 
-        thead th:first-child { border-radius: 8px 0 0 0; }
-        thead th:last-child { border-radius: 0 8px 0 0; text-align: right; }
+        thead th:first-child {
+            border-radius: 8px 0 0 0;
+        }
+
+        thead th:last-child {
+            border-radius: 0 8px 0 0;
+            text-align: right;
+        }
 
         tbody td {
             padding: 15px;
@@ -221,7 +242,10 @@
             background: #FAFAFA;
         }
 
-        .col-qty, .col-price, .col-tva, .col-total {
+        .col-qty,
+        .col-price,
+        .col-tva,
+        .col-total {
             text-align: right;
         }
 
@@ -257,6 +281,167 @@
             font-size: 14pt;
         }
 
+        /* ══════════════════════════════════════
+           ✨ NOUVEAU : ÉCHÉANCIER DE PAIEMENT
+        ══════════════════════════════════════ */
+        .payment-schedule-section {
+            padding: 0 var(--margin) var(--margin) var(--margin);
+            page-break-inside: avoid;
+        }
+
+        .payment-schedule-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .payment-schedule-title {
+            font-size: 11pt;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--dark);
+            position: relative;
+            padding-left: 16px;
+        }
+
+        .payment-schedule-title::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .payment-schedule-subtitle {
+            font-size: 8pt;
+            color: var(--zinc-500);
+            margin-top: 2px;
+            font-weight: 500;
+        }
+
+        .payment-schedule-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid var(--zinc-200);
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .payment-schedule-table thead th {
+            background: var(--zinc-100);
+            color: var(--zinc-500);
+            padding: 10px 14px;
+            font-size: 7.5pt;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid var(--zinc-200);
+        }
+
+        .payment-schedule-table tbody td {
+            padding: 12px 14px;
+            font-size: 9.5pt;
+            border-bottom: 1px solid var(--zinc-200);
+            background: white;
+        }
+
+        .payment-schedule-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .payment-schedule-table tbody tr:nth-child(even) td {
+            background: #FAFAFA;
+        }
+
+        .schedule-seq {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: var(--primary);
+            color: var(--primary-foreground);
+            font-weight: 900;
+            font-size: 10pt;
+            border-radius: 6px;
+        }
+
+        .schedule-title {
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        .schedule-desc {
+            font-size: 8.5pt;
+            color: var(--zinc-500);
+            margin-top: 2px;
+            font-style: italic;
+        }
+
+        .schedule-percent {
+            display: inline-block;
+            padding: 3px 8px;
+            background: var(--zinc-100);
+            color: var(--dark);
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 9pt;
+        }
+
+        .schedule-amount {
+            font-weight: 900;
+            color: var(--dark);
+            font-size: 10pt;
+        }
+
+        .schedule-date {
+            color: var(--zinc-500);
+            font-size: 9pt;
+        }
+
+        .payment-schedule-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: var(--zinc-100);
+            border-radius: 8px;
+            font-size: 9pt;
+        }
+
+        .payment-schedule-total-label {
+            font-weight: 700;
+            color: var(--zinc-500);
+            text-transform: uppercase;
+            font-size: 8pt;
+            letter-spacing: 0.05em;
+        }
+
+        .payment-schedule-total-value {
+            font-weight: 900;
+            color: var(--dark);
+            font-size: 12pt;
+        }
+
+        .payment-schedule-note {
+            font-size: 8.5pt;
+            color: var(--zinc-500);
+            margin-top: 10px;
+            padding: 10px 14px;
+            border-left: 3px solid var(--primary);
+            background: #FFFDF5;
+            line-height: 1.5;
+        }
+
         /* ── Footer ── */
         .footer {
             background: var(--dark);
@@ -266,6 +451,7 @@
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
             font-size: 8pt;
+            margin-top: auto;
         }
 
         .footer-col h4 {
@@ -281,7 +467,6 @@
             line-height: 1.6;
         }
 
-        /* Car Silhouette Decoration */
         .car-bg {
             position: absolute;
             bottom: -20px;
@@ -290,146 +475,231 @@
             opacity: 0.03;
             pointer-events: none;
         }
-
     </style>
 </head>
+
 <body>
 
-<div class="sheet">
-    <!-- Header -->
-    <header class="header">
-        <div class="header-left">
-            <div class="logo-box">
-                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"></path>
-                    <circle cx="7" cy="17" r="2"></circle>
-                    <path d="M9 17h6"></path>
-                    <circle cx="17" cy="17" r="2"></circle>
-                </svg>
+    <div class="sheet">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo-box">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2">
+                        </path>
+                        <circle cx="7" cy="17" r="2"></circle>
+                        <path d="M9 17h6"></path>
+                        <circle cx="17" cy="17" r="2"></circle>
+                    </svg>
+                </div>
+                <div class="company-info-header">
+                    <h2>{{ user.company_name or 'Auto-École' }}</h2>
+                    <p>Formation à la conduite d'excellence</p>
+                </div>
             </div>
-            <div class="company-info-header">
-                <h2>{{ user.company_name or 'Auto-École' }}</h2>
-                <p>Formation à la conduite d'excellence</p>
+            <div class="header-right">
+                <span class="doc-type-label">{{ document.type.value }}</span>
             </div>
-        </div>
-        <div class="header-right">
-            <span class="doc-type-label">{{ document.type.value }}</span>
-        </div>
-    </header>
+        </header>
 
-    <!-- Meta Strip -->
-    <div class="meta-strip">
-        <div class="meta-item">
-            <span class="meta-label">Référence</span>
-            <span class="meta-value">#{{ document.number }}</span>
+        <!-- Meta Strip -->
+        <div class="meta-strip">
+            <div class="meta-item">
+                <span class="meta-label">Référence</span>
+                <span class="meta-value">#{{ document.number }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Date d'émission</span>
+                <span class="meta-value">{{ document.created_at.strftime('%d/%m/%Y') }}</span>
+            </div>
         </div>
-        <div class="meta-item">
-            <span class="meta-label">Date d'émission</span>
-            <span class="meta-value">{{ document.created_at.strftime('%d/%m/%Y') }}</span>
+
+        <!-- Addresses -->
+        <section class="addresses">
+            <div class="address-box">
+                <h3>Émetteur</h3>
+                <div class="address-content">
+                    <strong>{{ user.company_name }}</strong>
+                    {{ user.address | replace('\n', '<br>') | safe }}<br>
+                    {% if user.phone %}Tél: {{ user.phone }}<br>{% endif %}
+                    {% if user.email %}{{ user.email }}{% endif %}
+                </div>
+            </div>
+            <div class="address-box">
+                <h3>Destinataire</h3>
+                <div class="address-content">
+                    <strong>{{ client.name }}</strong>
+                    {{ client.address | replace('\n', '<br>') | safe }}<br>
+                    {% if client.email %}{{ client.email }}<br>{% endif %}
+                    {% if client.phone %}Tél: {{ client.phone }}{% endif %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Items -->
+        <section class="items-section">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50%;">Prestation / Article</th>
+                        <th class="col-qty">Qté</th>
+                        <th class="col-price">P.U. HT</th>
+                        <th class="col-tva">TVA</th>
+                        <th class="col-total">Total HT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td class="col-qty">{{ item.quantity }}</td>
+                        <td class="col-price">{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
+                        <td class="col-tva">{{ item.tax_rate }}%</td>
+                        <td class="col-total">{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{
+                            currency }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Summary -->
+        <section class="summary-wrapper">
+            <div class="totals-box">
+                <div class="total-row">
+                    <span style="color: var(--zinc-500); font-weight: 600;">Sous-total HT</span>
+                    <span style="font-weight: 700;">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency
+                        }}</span>
+                </div>
+                <div class="total-row">
+                    <span style="color: var(--zinc-500); font-weight: 600;">TVA Totale</span>
+                    <span style="font-weight: 700;">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency
+                        }}</span>
+                </div>
+                <div class="total-row grand-total">
+                    <span>TOTAL TTC</span>
+                    <span>{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ✨ NOUVEAU : ÉCHÉANCIER DE PAIEMENT (conditionnel) -->
+        {% if document.payment_schedule and document.payment_schedule|length > 0 %}
+        <section class="payment-schedule-section">
+            <div class="payment-schedule-header">
+                <div>
+                    <div class="payment-schedule-title">📅 Échéancier de paiement</div>
+                    <div class="payment-schedule-subtitle">
+                        Le paiement sera échelonné en {{ document.payment_schedule|length }} tranche{{ 's' if
+                        document.payment_schedule|length > 1 else '' }} selon le calendrier ci-dessous
+                    </div>
+                </div>
+            </div>
+
+            <table class="payment-schedule-table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px; text-align: center;">N°</th>
+                        <th>Échéance</th>
+                        <th style="text-align: center; width: 100px;">Part</th>
+                        <th style="text-align: right; width: 130px;">Montant TTC</th>
+                        <th style="text-align: right; width: 120px;">Date prévue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for milestone in document.payment_schedule | sort(attribute='sequence') %}
+                    <tr>
+                        <td style="text-align: center;">
+                            <span class="schedule-seq">{{ milestone.sequence }}</span>
+                        </td>
+                        <td>
+                            <div class="schedule-title">{{ milestone.title }}</div>
+                            {% if milestone.description %}
+                            <div class="schedule-desc">{{ milestone.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            <span class="schedule-percent">{{ milestone.percent }}%</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <span class="schedule-amount">{{ "%.2f"|format(milestone.amount_cents / 100) }} {{ currency
+                                }}</span>
+                        </td>
+                        <td style="text-align: right;">
+                            {% if milestone.trigger_date %}
+                            <span class="schedule-date">{{ milestone.trigger_date.strftime('%d/%m/%Y') }}</span>
+                            {% else %}
+                            <span class="schedule-date" style="opacity: 0.5; font-style: italic;">À définir</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Récapitulatif -->
+            {% set total_percent = document.payment_schedule | sum(attribute='percent') %}
+            {% set total_amount = document.payment_schedule | sum(attribute='amount_cents') %}
+            <div class="payment-schedule-footer">
+                <span class="payment-schedule-total-label">Total de l'échéancier</span>
+                <span class="payment-schedule-total-value">
+                    {{ "%.2f"|format(total_amount / 100) }} {{ currency }}
+                    <span style="font-size: 9pt; font-weight: 600; color: var(--zinc-500); margin-left: 6px;">
+                        ({{ total_percent }}%)
+                    </span>
+                </span>
+            </div>
+
+            <!-- Note légale -->
+            <div class="payment-schedule-note">
+                <strong>💡 Conditions :</strong> Chaque échéance fera l'objet d'une facture distincte envoyée à la date
+                indiquée.
+                Le non-paiement d'une échéance à son terme pourra entraîner l'exigibilité immédiate du solde restant dû.
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-col">
+                <h4>Contact</h4>
+                <div class="footer-text">
+                    {{ user.email }}<br>
+                    {{ user.phone or '' }}
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Légal</h4>
+                <div class="footer-text">
+                    SIRET: {{ user.tax_id or '---' }}<br>
+                    {% if user.vat_number %}TVA: {{ user.vat_number }}{% endif %}
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Paiement</h4>
+                <div class="footer-text">
+                    {% if user.payment_info %}
+                    {{ user.payment_info | truncate(80) }}
+                    {% else %}
+                    Règlement par virement ou carte bancaire.
+                    {% endif %}
+                </div>
+            </div>
+        </footer>
+
+        <!-- Decorative Car SVG -->
+        <div class="car-bg">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                    d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2m2 0c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2m10 0c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2">
+                </path>
+            </svg>
         </div>
     </div>
-
-    <!-- Addresses -->
-    <section class="addresses">
-        <div class="address-box">
-            <h3>Émetteur</h3>
-            <div class="address-content">
-                <strong>{{ user.company_name }}</strong>
-                {{ user.address | replace('\n', '<br>') | safe }}<br>
-                {% if user.phone %}Tél: {{ user.phone }}<br>{% endif %}
-                {% if user.email %}{{ user.email }}{% endif %}
-            </div>
-        </div>
-        <div class="address-box">
-            <h3>Destinataire</h3>
-            <div class="address-content">
-                <strong>{{ client.name }}</strong>
-                {{ client.address | replace('\n', '<br>') | safe }}<br>
-                {% if client.email %}{{ client.email }}<br>{% endif %}
-                {% if client.phone %}Tél: {{ client.phone }}{% endif %}
-            </div>
-        </div>
-    </section>
-
-    <!-- Items -->
-    <section class="items-section">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 50%;">Prestation / Article</th>
-                    <th class="col-qty">Qté</th>
-                    <th class="col-price">P.U. HT</th>
-                    <th class="col-tva">TVA</th>
-                    <th class="col-total">Total HT</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                <tr>
-                    <td>{{ item.description }}</td>
-                    <td class="col-qty">{{ item.quantity }}</td>
-                    <td class="col-price">{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
-                    <td class="col-tva">{{ item.tax_rate }}%</td>
-                    <td class="col-total">{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{ currency }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
-
-    <!-- Summary -->
-    <section class="summary-wrapper">
-        <div class="totals-box">
-            <div class="total-row">
-                <span style="color: var(--zinc-500); font-weight: 600;">Sous-total HT</span>
-                <span style="font-weight: 700;">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</span>
-            </div>
-            <div class="total-row">
-                <span style="color: var(--zinc-500); font-weight: 600;">TVA Totale</span>
-                <span style="font-weight: 700;">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</span>
-            </div>
-            <div class="total-row grand-total">
-                <span>TOTAL TTC</span>
-                <span>{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-col">
-            <h4>Contact</h4>
-            <div class="footer-text">
-                {{ user.email }}<br>
-                {{ user.phone or '' }}
-            </div>
-        </div>
-        <div class="footer-col">
-            <h4>Légal</h4>
-            <div class="footer-text">
-                SIRET: {{ user.tax_id or '---' }}<br>
-                {% if user.vat_number %}TVA: {{ user.vat_number }}{% endif %}
-            </div>
-        </div>
-        <div class="footer-col">
-            <h4>Paiement</h4>
-            <div class="footer-text">
-                {% if user.payment_info %}
-                {{ user.payment_info | truncate(80) }}
-                {% else %}
-                Règlement par virement ou carte bancaire.
-                {% endif %}
-            </div>
-        </div>
-    </footer>
-
-    <!-- Decorative Car SVG -->
-    <div class="car-bg">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2m2 0c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2m10 0c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2"></path>
-        </svg>
-    </div>
-</div>
 
 </body>
+
 </html>

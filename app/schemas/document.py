@@ -7,6 +7,26 @@ from datetime import datetime
 from app.models.document import DocumentType, DocumentStatus
 
 
+class MilestonePreviewInput(BaseModel):
+    """Représentation d'une échéance pour l'aperçu."""
+    sequence: int = Field(ge=1)
+    title: str
+    percent: float = Field(ge=0, le=100)
+    description: Optional[str] = None
+    trigger_date: Optional[str] = None  # Format ISO (string ou null)
+
+    @field_validator('trigger_date', mode='before')
+    @classmethod
+    def normalize_date(cls, v):
+        if not v:
+            return None
+        if isinstance(v, str):
+            return v
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return None
+
+
 class ClientBrief(BaseModel):
     """Informations minimales du client pour les listes."""
     id: UUID
@@ -15,6 +35,22 @@ class ClientBrief(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class MilestoneRead(BaseModel):
+    """Représentation d'une échéance de paiement."""
+    id: UUID
+    sequence: int
+    title: str
+    percent: float
+    amount_cents: int
+    description: Optional[str] = None
+    trigger_date: Optional[datetime] = None
+    status: str  # PENDING, INVOICED, PAID, CANCELLED
+    invoice_id: Optional[UUID] = None
+    invoiced_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 class DocumentItemCreate(BaseModel):
     description: str
@@ -159,6 +195,7 @@ class DocumentRead(BaseModel):
     viewed_at: Optional[datetime] = None
     user_id: UUID
     client_id: UUID
+    payment_schedule: List[MilestoneRead] = []
     template_id: Optional[UUID] = None
     layout_style: str = "classic"
     items: List[DocumentItemRead] = []
@@ -201,7 +238,7 @@ class DocumentUpdate(BaseModel):
     font_family: Optional[str] = None
     show_bank_details: Optional[bool] = None
     show_tax_id: Optional[bool] = None
-
+    payment_schedule: Optional[list[MilestoneInput]] = None 
     @field_validator("layout_style")
     @classmethod
     def validate_layout_style(cls, v: Optional[str]) -> Optional[str]:
@@ -228,6 +265,12 @@ class DocumentPreviewItem(BaseModel):
     unit_price_cents: int = 0
     tax_rate: int = 20
 
+class MilestonePreviewInput(BaseModel):
+    sequence: int = Field(ge=1)
+    title: str
+    percent: float = Field(ge=0, le=100)
+    description: Optional[str] = None
+    trigger_date: Optional[str] = None  # ISO format
 
 class DocumentPreviewRequest(BaseModel):
     type: Optional[str] = "DEVIS"
@@ -250,6 +293,7 @@ class DocumentPreviewRequest(BaseModel):
     show_tax_id: bool = True
     notes: Optional[str] = None
     reference: Optional[str] = None
+    payment_schedule: Optional[List[MilestonePreviewInput]] = None
 
 
 class DocumentListRead(BaseModel):

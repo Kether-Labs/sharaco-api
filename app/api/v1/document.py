@@ -132,6 +132,7 @@ async def preview_document_live(
     db: AsyncSession = Depends(get_db),
 ):
     """Aperçu HTML en temps réel."""
+    
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
     except ValueError:
@@ -144,6 +145,7 @@ async def preview_document_live(
         except ValueError:
             template_uuid = None
 
+   
     html_content = await DocumentService.render_preview(
         db=db,
         user=current_user,
@@ -166,6 +168,7 @@ async def preview_document_live(
         show_bank_details=preview_data.show_bank_details,
         show_tax_id=preview_data.show_tax_id,
         reference=preview_data.reference,
+        payment_schedule=[m.model_dump() for m in preview_data.payment_schedule] if preview_data.payment_schedule else None
     )
     return HTMLResponse(content=html_content)
 
@@ -828,6 +831,16 @@ async def update_document(
         if not client:
             raise HTTPException(status_code=404, detail="Client introuvable")
 
+    if document_data.payment_schedule is not None:
+        from app.services.paymentScheduleService import PaymentScheduleService
+        try:
+            await PaymentScheduleService.set_schedule(
+                db,
+                document,
+                [m.model_dump() for m in document_data.payment_schedule],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     try:
         updated = await DocumentService.update_document(
             db=db,
@@ -1182,12 +1195,12 @@ async def create_document(
             # ✅ NOUVEAU : Passer le project_id
             project_id=document_data.project_id,
         )
-        if data.payment_schedule:
+        if document_data.payment_schedule:
             try:
                 await PaymentScheduleService.set_schedule(
                     db,
                     document,
-                    [m.model_dump() for m in data.payment_schedule],
+                    [m.model_dump() for m in document_data.payment_schedule],
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -1228,6 +1241,25 @@ def _enrich_document(doc, totals: dict) -> dict:
         "font_family": getattr(doc, 'font_family', 'Inter'),
         "show_bank_details": getattr(doc, 'show_bank_details', True),
         "show_tax_id": getattr(doc, 'show_tax_id', True),
+        "payment_schedule": [
+            {
+                "id": ms.id,
+                "sequence": ms.sequence,
+                "title": ms.title,
+                "percent": ms.percent,
+                "amount_cents": ms.amount_cents,
+                "description": ms.description,
+                "trigger_date": ms.trigger_date.isoformat() if ms.trigger_date else None,
+                "status": ms.status if isinstance(ms.status, str) else ms.status.value,
+                "invoice_id": ms.invoice_id,
+                "invoiced_at": ms.invoiced_at.isoformat() if ms.invoiced_at else None,
+                "paid_at": ms.paid_at.isoformat() if ms.paid_at else None,
+            }
+            for ms in sorted(
+                doc.payment_schedule or [],
+                key=lambda x: x.sequence
+            )
+        ],
         # Totaux
         "subtotal_cents": totals["subtotal_cents"],
         "tax_total_cents": totals["tax_total_cents"],

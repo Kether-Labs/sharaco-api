@@ -157,6 +157,141 @@ class DocumentService:
             "has_schedule": bool(milestones),
             "auto_sent": bool(first_invoice and settings.auto_send_invoice),
         }
+    def _parse_trigger_date(value) -> datetime | None:
+        """Parse une date ISO (string) en datetime naive UTC."""
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return to_naive_utc(value)
+        if isinstance(value, str):
+            try:
+                # Gère "2026-08-15" ET "2026-08-15T00:00:00" ET "2026-08-15T12:00:00Z"
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return to_naive_utc(dt)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"⚠️ Impossible de parser la date '{value}': {e}")
+                return None
+        return None
+    # ============================================================
+    #  ✅ APERÇU EN TEMPS RÉEL (pour le preview du frontend)
+    # ============================================================
+    @staticmethod
+    async def render_preview(
+        db: AsyncSession,
+        user: User,
+        type: DocumentType = DocumentType.DEVIS,
+        client_name: str = "Client Exemple",
+        client_email: str = "",
+        client_address: str = "",
+        client_phone: str = "",
+        items: list[dict] = None,
+        template_id: Optional[UUID] = None,
+        layout_style: str = "classic",
+        primary_color: str = "#2563EB",
+        secondary_color: str = "#1E40AF",
+        accent_color: str = "#DBEAFE",
+        text_color: str = "#1F2937",
+        background_color: str = "#FFFFFF",
+        font_family: str = "Inter",
+        header_text: Optional[str] = None,
+        footer_text: Optional[str] = None,
+        show_bank_details: bool = True,
+        show_tax_id: bool = True,
+        reference: Optional[str] = None,
+        payment_schedule: Optional[list[dict]] = None,  # ✅ Échéancier pour le preview
+    ) -> str:
+        """Génère un aperçu HTML en temps réel (sans sauvegarder en base)."""
+        items = items or [{"description": "Exemple", "quantity": 1, "unit_price_cents": 0, "tax_rate": 20}]
+
+        # 1. Template
+        if template_id:
+            template = await TemplateService.get_by_id(db, template_id, user.id)
+            if not template:
+                template = DocumentService._build_fallback_template(user.id, layout_style)
+        else:
+            template = DocumentTemplate(
+                id=uuid4(),
+                name="Aperçu",
+                user_id=user.id,
+                layout_style=layout_style,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                accent_color=accent_color,
+                text_color=text_color,
+                background_color=background_color,
+                font_family=font_family,
+                header_text=header_text,
+                footer_text=footer_text,
+                show_bank_details=show_bank_details,
+                show_tax_id=show_tax_id,
+            )
+
+        # 2. Document temporaire (non persisté)
+        doc_id = uuid4()
+        fake_doc = Document(
+            id=doc_id,
+            type=type,
+            status=DocumentStatus.DRAFT,
+            number=reference or ("DEV-2026-001" if type == DocumentType.DEVIS else "FACT-2026-001"),
+            created_at=to_naive_utc(datetime.now(timezone.utc)),
+            due_date=None,
+            user_id=user.id,
+            client_id=uuid4(),
+        )
+
+        fake_doc.items = [
+            DocumentItem(
+                id=uuid4(),
+                description=item.get("description", ""),
+                quantity=item.get("quantity", 1),
+                unit_price_cents=item.get("unit_price_cents", 0),
+                tax_rate=item.get("tax_rate", 20),
+                document_id=doc_id,
+            )
+            for item in items
+        ]
+
+        # 3. ✅ Créer des faux PaymentSchedule pour l'aperçu
+        if payment_schedule:
+            from app.models.payment_schedule import PaymentSchedule
+            
+            # Calculer le total TTC pour les montants
+            totals = DocumentService.calculate_totals(fake_doc.items)
+            
+            fake_doc.payment_schedule = [
+                PaymentSchedule(
+                    id=uuid4(),
+                    document_id=doc_id,
+                    sequence=ms.get("sequence", idx + 1),
+                    title=ms.get("title", f"Échéance {idx + 1}"),
+                    percent=ms.get("percent", 0),
+                    amount_cents=int(round(totals["grand_total_cents"] * ms.get("percent", 0) / 100)),
+                    description=ms.get("description"),
+                    trigger_date=DocumentService._parse_trigger_date(ms.get("trigger_date")),
+                    status="PENDING",
+                )
+                for idx, ms in enumerate(payment_schedule)
+            ]
+        else:
+            fake_doc.payment_schedule = []
+
+        # 4. Client temporaire
+        fake_client = Client(
+            id=uuid4(),
+            name=client_name,
+            email=client_email,
+            address=client_address,
+            phone=client_phone,
+            user_id=user.id,
+        )
+
+        # 5. Rendu HTML
+        return pdf_renderer.render_html(
+            document=fake_doc,
+            template=template,
+            user=user,
+            client=fake_client,
+        )
 
     # ============================================================
     #  📄 Méthodes existantes (inchangées)
@@ -430,3 +565,21 @@ class DocumentService:
         result = await db.execute(count_stmt)
         count = result.scalar() or 0
         return f"{prefix}-{year}-{count + 1:03d}"
+
+    @staticmethod
+    def _build_fallback_template(user_id: UUID, layout_style: str = "classic") -> DocumentTemplate:
+        """Template fallback avec valeurs par défaut."""
+        return DocumentTemplate(
+            id=uuid4(),
+            name="Par défaut",
+            user_id=user_id,
+            layout_style=layout_style,
+            primary_color="#2563EB",
+            secondary_color="#1E40AF",
+            accent_color="#DBEAFE",
+            text_color="#1F2937",
+            background_color="#FFFFFF",
+            font_family="Inter",
+            show_bank_details=True,
+            show_tax_id=True,
+        )
