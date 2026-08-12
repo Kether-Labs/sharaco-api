@@ -113,59 +113,136 @@ class DocumentService:
     # ============================================================
     #  ✅ NOUVEAU : handler d'acceptation (appelé quand le client signe)
     # ============================================================
+    # app/services/documentService.py
+
     @staticmethod
     async def handle_quote_acceptance(db: AsyncSession, quote: Document) -> dict:
-    
+        """
+        Handler appelé quand un client accepte un devis via le lien privé.
+        
+        Workflow :
+        1. Marque le devis comme ACCEPTED
+        2. Selon les BillingSettings de l'utilisateur :
+        - Si échéancier existe → facture la 1ère échéance (ACOMPTE)
+        - Sinon → crée une facture STANDARD en brouillon
+        3. Si auto_send_invoice → envoie la facture par email
+        4. Notifie le pro
+        
+        La facture hérite du project_id du devis (cohérence projet).
+        """
         from app.services.billingSettingsService import BillingSettingsService
         from app.services.paymentScheduleService import PaymentScheduleService
-
+        from app.services.invoiceService import InvoiceService
+        from app.services.notificationService import NotificationService
+        
+        # ═══════════════════════════════════════════════
+        # 1. Marquer le devis comme accepté
+        # ═══════════════════════════════════════════════
         quote.status = DocumentStatus.ACCEPTED
         quote.accepted_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(quote)
-
+        
+        logger.info(f"✅ Devis {quote.number} (id={quote.id}) marqué comme ACCEPTED")
+        
+        # ═══════════════════════════════════════════════
+        # 2. Récupérer les settings de facturation
+        # ═══════════════════════════════════════════════
         settings = await BillingSettingsService.get_or_create(db, quote.user_id)
         first_invoice = None
-
-        # Charger l'échéancier
+        has_schedule = False
+        
+        # ═══════════════════════════════════════════════
+        # 3. Gérer l'échéancier si présent
+        # ═══════════════════════════════════════════════
         milestones = await PaymentScheduleService.get_by_document(db, quote.id)
-
-        if settings.auto_create_invoice:
+        has_schedule = bool(milestones)
+        
+        if not settings.auto_create_invoice:
+            logger.info(f"⏭️ Auto-création facture désactivée pour user {quote.user_id}")
+            await db.flush()
+            await db.refresh(quote)
+            return {
+                "quote": quote,
+                "invoice": None,
+                "has_schedule": has_schedule,
+                "auto_sent": False,
+                "message": "Devis accepté. Aucune facture créée (auto_create_invoice désactivé).",
+            }
+        
+        try:
             if milestones:
-                # ✅ CAS ÉCHÉANCIER : facturer uniquement la 1ère échéance
+                # ═══ CAS ÉCHÉANCIER : facturer la 1ère échéance ═══
                 first = next((m for m in milestones if m.sequence == 1), None)
                 if first:
                     first_invoice = await PaymentScheduleService.invoice_milestone(
                         db, first, quote, origin="auto"
                     )
+                    logger.info(
+                        f"💰 Facture ACOMPTE {first_invoice.number} créée "
+                        f"(milestone '{first.title}', {first.percent}%)"
+                    )
             else:
-                # ✅ CAS CLASSIQUE : facture standard brouillon
-                first_invoice = await DocumentService.create_from_quote(
-                    db=db, quote=quote, kind=InvoiceType.STANDARD, origin="auto"
+                # ═══ CAS CLASSIQUE : facture standard complète ═══
+                first_invoice = await InvoiceService.create_from_quote(
+                    db=db,
+                    quote=quote,
+                    kind=InvoiceType.STANDARD,
+                    origin="auto",
                 )
-
+                logger.info(
+                    f"💰 Facture STANDARD {first_invoice.number} créée "
+                    f"(project={first_invoice.project_id})"
+                )
+            
+            # ═══════════════════════════════════════════════
+            # 4. Envoi automatique si activé
+            # ═══════════════════════════════════════════════
+            auto_sent = False
             if settings.auto_send_invoice and first_invoice:
-                first_invoice.status = DocumentStatus.SENT
-                first_invoice.sent_at = to_naive_utc(datetime.now(timezone.utc))
-                db.add(first_invoice)
-
+                try:
+                    await InvoiceService.send_invoice(db, first_invoice)
+                    auto_sent = True
+                    logger.info(f"📧 Facture {first_invoice.number} envoyée automatiquement")
+                except Exception as e:
+                    logger.error(f"❌ Erreur envoi auto facture: {e}", exc_info=True)
+                    # On ne bloque pas l'acceptation si l'envoi échoue
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la création de facture: {e}", exc_info=True)
+            # On continue quand même : le devis est accepté, juste pas de facture
+            # L'utilisateur pourra créer la facture manuellement
+        
+        # ═══════════════════════════════════════════════
+        # 5. Notifier le pro (in-app + email)
+        # ═══════════════════════════════════════════════
+        try:
+            await NotificationService.notify_document_accepted(quote.id, db)
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur notification acceptance: {e}")
+        
+        # ═══════════════════════════════════════════════
+        # 6. Flush et refresh final
+        # ═══════════════════════════════════════════════
         await db.flush()
         await db.refresh(quote)
-
+        
         return {
             "quote": quote,
             "invoice": first_invoice,
-            "has_schedule": bool(milestones),
-            "auto_sent": bool(first_invoice and settings.auto_send_invoice),
+            "has_schedule": has_schedule,
+            "auto_sent": auto_sent,
+            "message": (
+                f"Devis accepté. Facture {first_invoice.number if first_invoice else '(aucune)'} créée."
+            ),
         }
     def _parse_trigger_date(value) -> datetime | None:
-        """Parse une date ISO (string) en datetime naive UTC."""
+        
         if not value:
             return None
         if isinstance(value, datetime):
             return to_naive_utc(value)
         if isinstance(value, str):
             try:
-                # Gère "2026-08-15" ET "2026-08-15T00:00:00" ET "2026-08-15T12:00:00Z"
                 dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
                 return to_naive_utc(dt)
             except (ValueError, TypeError) as e:

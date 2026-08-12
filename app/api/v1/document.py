@@ -415,17 +415,37 @@ async def accept_document_as_client(
     data: AcceptDocumentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Le client accepte le devis via le token PRIVÉ."""
+    """
+    Le client accepte le devis via le token PRIVÉ.
+    
+    Workflow :
+    1. Valide le token (existence, non-expiration)
+    2. Vérifie l'idempotence (déjà accepté ?)
+    3. Sauvegarde la signature
+    4. Appelle handle_quote_acceptance qui :
+       - Marque le devis comme ACCEPTED
+       - Crée une facture auto selon les settings
+       - Notifie le pro
+    5. Commit final
+    """
     logger.info(f"✅ POST /documents/client/{token[:8]}.../accept")
     
+    # ═══════════════════════════════════════════════
+    # 1. Récupérer le document via le token privé
+    # ═══════════════════════════════════════════════
     result = await db.execute(
-        select(Document).where(Document.client_token == token)
+        select(Document)
+        .options(selectinload(Document.items))  # ✅ Charger les items pour la facture
+        .where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
     
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
     
+    # ═══════════════════════════════════════════════
+    # 2. Validations
+    # ═══════════════════════════════════════════════
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
     
@@ -435,41 +455,93 @@ async def accept_document_as_client(
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
     
-    # ✅ IDEMPOTENCE : Si déjà accepté, retourner succès
-    if document.status == DocumentStatus.ACCEPTED:
-        logger.info(f"ℹ️ Document {document.id} déjà accepté")
-        return {
-            "message": "Devis déjà accepté",
-            "status": document.status,
-            "accepted_at": document.accepted_at,
-            "already_accepted": True,
-        }
-    
     # Vérifier que le document peut être accepté
+    if document.type != DocumentType.DEVIS:
+        raise HTTPException(
+            status_code=400,
+            detail="Seuls les devis peuvent être acceptés"
+        )
+    
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
             detail=f"Ce document ne peut pas être accepté (statut: {document.status})"
         )
     
-    # Mettre à jour
-    document.status = DocumentStatus.ACCEPTED
-    document.accepted_at = to_naive_utc(datetime.now(timezone.utc))
+    # ═══════════════════════════════════════════════
+    # 3. IDEMPOTENCE : Si déjà accepté, retourner succès
+    # ═══════════════════════════════════════════════
+    if document.status == DocumentStatus.ACCEPTED:
+        logger.info(f"ℹ️ Document {document.id} déjà accepté")
+        return {
+            "message": "Devis déjà accepté",
+            "status": document.status,
+            "accepted_at": document.accepted_at,
+            "signature_name": document.signature_name,
+            "already_accepted": True,
+            "invoice_created": False,
+        }
+    
+    # ═══════════════════════════════════════════════
+    # 4. Sauvegarder la signature du client
+    # ═══════════════════════════════════════════════
     document.signature_name = data.signature_name
-    
     db.add(document)
+    
+    logger.info(f"✍️ Signature enregistrée: '{data.signature_name}'")
+    
+    # ═══════════════════════════════════════════════
+    # 5. Appeler le handler qui fait tout le reste
+    # ═══════════════════════════════════════════════
+    try:
+        acceptance_result = await DocumentService.handle_quote_acceptance(
+            db=db,
+            quote=document,
+        )
+    except Exception as e:
+        logger.error(f"❌ Erreur handle_quote_acceptance: {e}", exc_info=True)
+        # Fallback : au moins marquer comme accepté
+        document.signature_name = data.signature_name
+        document.status = DocumentStatus.ACCEPTED
+        document.accepted_at = to_naive_utc(datetime.now(timezone.utc))
+        db.add(document)
+        acceptance_result = {
+            "invoice": None,
+            "has_schedule": False,
+            "auto_sent": False,
+        }
+    
+    # ═══════════════════════════════════════════════
+    # 6. Commit final
+    # ═══════════════════════════════════════════════
     await db.commit()
+    await db.refresh(document)
     
-    logger.info(f"✅ Devis {document.id} accepté par {data.signature_name}")
+    invoice = acceptance_result.get("invoice")
     
-    # Notifier l'utilisateur
-    await NotificationService.notify_document_accepted(document.id, db)
+    logger.info(
+        f"✅ Devis {document.id} accepté par '{data.signature_name}'"
+        + (f" → facture {invoice.number} créée" if invoice else " (pas de facture auto)")
+    )
     
+    # ═══════════════════════════════════════════════
+    # 7. Retour enrichi
+    # ═══════════════════════════════════════════════
     return {
-        "message": "Devis accepté avec succès",
+        "message": (
+            f"Devis accepté avec succès"
+            + (f". Facture {invoice.number} créée automatiquement." if invoice else ".")
+        ),
         "status": document.status,
         "accepted_at": document.accepted_at,
+        "signature_name": document.signature_name,
         "already_accepted": False,
+        # ✅ Infos sur la facture créée (pour UI)
+        "invoice_created": invoice is not None,
+        "invoice_id": str(invoice.id) if invoice else None,
+        "invoice_number": invoice.number if invoice else None,
+        "invoice_auto_sent": acceptance_result.get("auto_sent", False),
+        "has_schedule": acceptance_result.get("has_schedule", False),
     }
 
 
@@ -750,6 +822,7 @@ async def get_document_pdf(
         template=template,
         user=current_user,
         client=client,
+        db=db,
     )
 
     filename = f"{document.number or 'document'}.pdf"
@@ -778,11 +851,12 @@ async def preview_document(
 
     template = await _get_document_template(db, document, current_user)
 
-    html_content = pdf_renderer.render_html_preview(
+    html_content = await pdf_renderer.render_html(
         document=document,
         template=template,
         user=current_user,
         client=client,
+        db=db,  # ← AJOUTÉ pour source_quote_number
     )
     return HTMLResponse(content=html_content)
 
@@ -1040,11 +1114,12 @@ async def get_document_preview_png(
     logger.info(f"🖼️ Template layout_style: {template.layout_style}")
 
     # Générer le HTML
-    html_content = pdf_renderer.render_html_preview(
+    html_content = await pdf_renderer.render_html(
         document=document,
         template=template,
         user=current_user,
         client=client,
+        db=db,  # ← AJOUTÉ pour source_quote_number
     )
 
     # Générer le PNG
@@ -1203,6 +1278,9 @@ async def create_document(
                     document,
                     [m.model_dump() for m in document_data.payment_schedule],
                 )
+
+                await db.commit()
+                await db.refresh(document, ['items', 'payment_schedule'])
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
