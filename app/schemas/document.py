@@ -103,7 +103,7 @@ class SharedDocumentRead(BaseModel):
     layout_style: str = "classic"
     notes: Optional[str] = None
     items: List[DocumentItemRead] = []
-    
+    payment_schedule: List[MilestoneRead] = []
     # Totaux
     subtotal_cents: Optional[int] = None
     tax_total_cents: Optional[int] = None

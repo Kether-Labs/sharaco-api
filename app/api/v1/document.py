@@ -665,13 +665,14 @@ async def refuse_shared_document(
 async def get_shared_document_public(
     token: str,
     db: AsyncSession = Depends(get_db),
+    
 ):
     """Page PUBLIQUE : Visualisation uniquement (lecture seule)."""
     logger.info(f"👁️ GET /documents/shared/{token[:8]}... (public)")
     
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner))
+        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner), selectinload(Document.payment_schedule),)
         .where(Document.share_token == token)
     )
     document = result.scalar_one_or_none()
@@ -724,6 +725,22 @@ async def get_shared_document_public(
         # Infos client
         "client_name": document.client.name if document.client else None,
         "client_email": document.client.email if document.client else None,
+        "payment_schedule": [
+            {
+                "id": str(ms.id),
+                "sequence": ms.sequence,
+                "title": ms.title,
+                "percent": ms.percent,
+                "amount_cents": ms.amount_cents,
+                "description": ms.description,
+                "trigger_date": ms.trigger_date.isoformat() if ms.trigger_date else None,
+                "status": ms.status if isinstance(ms.status, str) else ms.status.value,
+            }
+            for ms in sorted(
+                document.payment_schedule or [],
+                key=lambda x: x.sequence
+            )
+        ],
         # ✅ PAS d'actions de validation possibles ici
         "can_validate": False,
     }
@@ -738,7 +755,7 @@ async def get_document_for_client(
     
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner))
+        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner),selectinload(Document.payment_schedule))
         .where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
@@ -790,6 +807,22 @@ async def get_document_for_client(
         "client_email": document.client.email if document.client else None,
         # ✅ ICI le client peut valider
         "can_validate": True,
+        "payment_schedule": [
+            {
+                "id": str(ms.id),
+                "sequence": ms.sequence,
+                "title": ms.title,
+                "percent": ms.percent,
+                "amount_cents": ms.amount_cents,
+                "description": ms.description,
+                "trigger_date": ms.trigger_date.isoformat() if ms.trigger_date else None,
+                "status": ms.status if isinstance(ms.status, str) else ms.status.value,
+            }
+            for ms in sorted(
+                document.payment_schedule or [],
+                key=lambda x: x.sequence
+            )
+        ],
         "accepted_at": document.accepted_at,
         "refused_at": document.refused_at,
         "signature_name": document.signature_name,
