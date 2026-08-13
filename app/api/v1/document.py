@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
 from app.models.payment_schedule import PaymentSchedule,MilestoneStatus
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
 from datetime import datetime, timezone
@@ -50,80 +50,194 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # 📄 LIVE PREVIEW (pas de sauvegarde DB) - DOIT ÊTRE EN PREMIER
 # ============================================================
+# app/api/v1/document.py
+
+# app/api/v1/document.py
+
+# app/api/v1/document.py
+
 @router.get("/stats", response_model=dict)
 async def get_documents_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Récupère les statistiques des documents de l'utilisateur."""
     logger.info(f"📊 GET /documents/stats")
-    
-    # ✅ REQUÊTE 1 : Compter les documents par statut (sans JOIN)
-    count_query = await db.execute(
-        select(
-            Document.status,
-            func.count(Document.id)  # ✅ Pas de JOIN, donc pas de duplication
-        )
-        .where(Document.user_id == current_user.id)
+
+    # ═══════════════════════════════════════════════
+    # 1. DEVIS par statut (simple, pas de jointure)
+    # ═══════════════════════════════════════════════
+    quotes_count_stmt = (
+        select(Document.status, func.count(Document.id))
+        .select_from(Document)
+        .where(Document.user_id == current_user.id, Document.type == DocumentType.DEVIS)
         .group_by(Document.status)
     )
-    
-    counts_by_status = {
-        row[0].value: row[1] 
-        for row in count_query.all()
-    }
-    
-    # ✅ REQUÊTE 2 : Calculer les totaux par statut (avec JOIN)
-    totals_query = await db.execute(
+    quotes_count_result = await db.execute(quotes_count_stmt)
+    quotes_by_status = {row[0].value: row[1] for row in quotes_count_result.all()}
+
+    # ═══════════════════════════════════════════════
+    # 2. FACTURES : count des documents UNIQUES par statut
+    #    (distinct évite la duplication avec les items)
+    # ═══════════════════════════════════════════════
+    invoices_count_stmt = (
         select(
             Document.status,
+            func.count(distinct(Document.id)),  # ✅ CORRECTION : distinct
+        )
+        .select_from(Document)
+        .where(Document.user_id == current_user.id, Document.type == DocumentType.FACTURE)
+        .group_by(Document.status)
+    )
+    invoices_count_result = await db.execute(invoices_count_stmt)
+    invoices_count_by_status = {row[0].value: row[1] for row in invoices_count_result.all()}
+
+    # ═══════════════════════════════════════════════
+    # 3. FACTURES : totaux par statut (avec jointure)
+    #    On utilise un DISTINCT sur la somme via sous-requête
+    # ═══════════════════════════════════════════════
+    # Calcul du total TTC par facture (sous-requête)
+    invoice_totals_subq = (
+        select(
+            Document.id.label("doc_id"),
+            Document.status.label("status"),
             func.coalesce(
                 func.sum(
                     DocumentItem.quantity * DocumentItem.unit_price_cents +
                     (DocumentItem.quantity * DocumentItem.unit_price_cents * DocumentItem.tax_rate / 100)
                 ), 0
-            )
+            ).label("total_cents")
         )
+        .select_from(Document)
         .outerjoin(DocumentItem, DocumentItem.document_id == Document.id)
-        .where(Document.user_id == current_user.id)
-        .group_by(Document.status)
+        .where(Document.user_id == current_user.id, Document.type == DocumentType.FACTURE)
+        .group_by(Document.id, Document.status)
+        .subquery()
     )
     
-    totals_by_status = {
-        row[0].value: int(row[1])
-        for row in totals_query.all()
+    # Agrégation par statut sur la sous-requête (évite la duplication)
+    invoices_totals_stmt = (
+        select(
+            invoice_totals_subq.c.status,
+            func.sum(invoice_totals_subq.c.total_cents)
+        )
+        .group_by(invoice_totals_subq.c.status)
+    )
+    invoices_totals_result = await db.execute(invoices_totals_stmt)
+    invoices_totals_by_status = {
+        row[0].value: int(row[1]) for row in invoices_totals_result.all()
     }
-    
-    # ✅ Combiner les résultats
-    all_statuses = set(counts_by_status.keys()) | set(totals_by_status.keys())
-    stats = {
-        status: {
-            "count": counts_by_status.get(status, 0),
-            "total_cents": totals_by_status.get(status, 0),
+
+    # ═══════════════════════════════════════════════
+    # 4. Combiner count + totals
+    # ═══════════════════════════════════════════════
+    invoices_by_status = {}
+    all_statuses = set(invoices_count_by_status.keys()) | set(invoices_totals_by_status.keys())
+    for status in all_statuses:
+        invoices_by_status[status] = {
+            "count": invoices_count_by_status.get(status, 0),
+            "total_cents": invoices_totals_by_status.get(status, 0),
         }
-        for status in all_statuses
-    }
-    
-    # Calculs globaux
-    total_documents = sum(s["count"] for s in stats.values())
-    total_revenue_cents = sum(s["total_cents"] for s in stats.values())
-    
-    # Taux de conversion
-    accepted_count = stats.get("ACCEPTED", {}).get("count", 0)
-    # ✅ Seuls les devis envoyés (SENT + VIEWED + ACCEPTED + REFUSED) comptent pour le taux
-    total_evaluated = (
-        stats.get("SENT", {}).get("count", 0) +
-        stats.get("VIEWED", {}).get("count", 0) +
-        stats.get("ACCEPTED", {}).get("count", 0) +
-        stats.get("REFUSED", {}).get("count", 0)
+
+    # ═══════════════════════════════════════════════
+    # 5. Pipeline : devis ACCEPTED (même technique)
+    # ═══════════════════════════════════════════════
+    pipeline_subq = (
+        select(
+            Document.id.label("doc_id"),
+            func.coalesce(
+                func.sum(
+                    DocumentItem.quantity * DocumentItem.unit_price_cents +
+                    (DocumentItem.quantity * DocumentItem.unit_price_cents * DocumentItem.tax_rate / 100)
+                ), 0
+            ).label("total_cents")
+        )
+        .select_from(Document)
+        .outerjoin(DocumentItem, DocumentItem.document_id == Document.id)
+        .where(
+            Document.user_id == current_user.id,
+            Document.type == DocumentType.DEVIS,
+            Document.status == DocumentStatus.ACCEPTED,
+        )
+        .group_by(Document.id)
+        .subquery()
     )
-    conversion_rate = (accepted_count / total_evaluated * 100) if total_evaluated > 0 else 0
     
+    pipeline_stmt = select(func.coalesce(func.sum(pipeline_subq.c.total_cents), 0))
+    pipeline_result = await db.execute(pipeline_stmt)
+    pipeline_cents = int(pipeline_result.scalar() or 0)
+
+    # ═══════════════════════════════════════════════
+    # 6. Calculs métier (CORRIGÉS)
+    # ═══════════════════════════════════════════════
+    
+    # ✅ VRAI CA : factures PAYÉES uniquement
+    paid = invoices_by_status.get("PAID", {"count": 0, "total_cents": 0})
+    revenue_cents = paid["total_cents"]
+    paid_count = paid["count"]
+    
+    # 💰 Créances : factures envoyées MAIS NON PAYÉES
+    #    (DRAFT n'est PAS inclus car pas encore envoyée)
+    sent = invoices_by_status.get("SENT", {"count": 0, "total_cents": 0})
+    viewed = invoices_by_status.get("VIEWED", {"count": 0, "total_cents": 0})
+    receivables_cents = sent["total_cents"] + viewed["total_cents"]
+    receivables_count = sent["count"] + viewed["count"]
+    
+    # 📝 Brouillons : factures en préparation (mémoire séparée)
+    drafts = invoices_by_status.get("DRAFT", {"count": 0, "total_cents": 0})
+    drafts_cents = drafts["total_cents"]
+    drafts_count = drafts["count"]
+    
+    # 🔴 Factures en retard
+    overdue_cents = 0
+    overdue_count = 0
+
+    # Taux de conversion des devis
+    quotes_sent = (
+        quotes_by_status.get("SENT", 0) +
+        quotes_by_status.get("VIEWED", 0) +
+        quotes_by_status.get("ACCEPTED", 0) +
+        quotes_by_status.get("REFUSED", 0)
+    )
+    quotes_accepted = quotes_by_status.get("ACCEPTED", 0)
+    conversion_rate = (quotes_accepted / quotes_sent * 100) if quotes_sent > 0 else 0
+
+    # Taux d'encaissement (factures payées / total factures hors brouillons)
+    total_invoices_count = (
+        paid_count + receivables_count + overdue_count
+    )
+    collection_rate = (
+        paid_count / total_invoices_count * 100 
+        if total_invoices_count > 0 else 0
+    )
+
     return {
-        "by_status": stats,
-        "total_documents": total_documents,
-        "total_revenue_cents": total_revenue_cents,
+        # ✅ VRAI CA (le plus important)
+        "revenue_cents": revenue_cents,
+        "paid_invoices_count": paid_count,
+        
+        # 💰 Argent dû par les clients
+        "receivables_cents": receivables_cents,
+        "receivables_count": receivables_count,
+        
+        # 📝 Brouillons (factures en préparation)
+        "drafts_cents": drafts_cents,
+        "drafts_count": drafts_count,
+        
+        # 🔴 Retards de paiement
+        "overdue_cents": overdue_cents,
+        "overdue_count": overdue_count,
+        
+        # 📊 Pipeline commercial (devis signés non facturés)
+        "pipeline_cents": pipeline_cents,
+        "accepted_quotes_count": quotes_accepted,
+        
+        # 📈 Taux
         "conversion_rate": round(conversion_rate, 1),
+        "collection_rate": round(collection_rate, 1),
+        
+        # Détails par statut
+        "quotes_by_status": quotes_by_status,
+        "invoices_by_status": invoices_by_status,
     }
 
 @router.post("/preview", response_class=HTMLResponse)
