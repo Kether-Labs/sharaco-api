@@ -1079,10 +1079,20 @@ async def mark_invoice_as_paid(
         }
     
     # Marquer la facture comme payée
+    now = to_naive_utc(datetime.now(timezone.utc))
     invoice.status = DocumentStatus.PAID
+    invoice.paid_at = now  # ✅ NOUVEAU
     db.add(invoice)
+
+    
+    
     
     # Chercher si une milestone est liée à cette facture
+    stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
+    result = await db.execute(stmt)
+    milestone = result.scalar_one_or_none()
+
+    from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
     stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
     result = await db.execute(stmt)
     milestone = result.scalar_one_or_none()
@@ -1099,7 +1109,7 @@ async def mark_invoice_as_paid(
     return {
         "message": f"Facture {invoice.number} marquée comme payée",
         "invoice_number": invoice.number,
-        "paid_at": invoice.sent_at,  # TODO: ajouter un paid_at au modèle
+        "paid_at": invoice.paid_at.isoformat() if invoice.paid_at else None,
         "milestone_updated": milestone is not None,
         "already_paid": False,
     }

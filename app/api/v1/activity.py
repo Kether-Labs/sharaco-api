@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, union_all, literal_column
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
+from app.services.documentService import DocumentService
+from app.models.document import DocumentType
 from typing import Optional, List
 from app.db.engine import get_db
 from app.core.deps import get_current_user
@@ -46,11 +48,13 @@ class ActivityItem:
         self.metadata = metadata or {}
 
 
+# app/api/v1/activity.py
+
 @router.get("/", response_model=List[dict])
 async def get_activity_feed(
     limit: int = Query(50, ge=1, le=100),
     type_filter: Optional[str] = Query(None, description="Filtrer par type: PROJECT, DOCUMENT"),
-    action_filter: Optional[str] = Query(None, description="Filtrer par action: CREATED, UPDATED, SENT, ACCEPTED, REFUSED"),
+    action_filter: Optional[str] = Query(None, description="Filtrer par action"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -59,7 +63,9 @@ async def get_activity_feed(
     
     activities = []
     
-    # ✅ 1. Récupérer les projets
+    # ═══════════════════════════════════════════════
+    # 1. Projets (inchangé)
+    # ═══════════════════════════════════════════════
     if not type_filter or type_filter == "PROJECT":
         projects_query = await db.execute(
             select(Project)
@@ -70,13 +76,7 @@ async def get_activity_feed(
         projects = projects_query.scalars().all()
         
         for project in projects:
-            # Déterminer l'action
-            if project.created_at == project.updated_at:
-                action = "CREATED"
-            else:
-                action = "UPDATED"
-            
-            # Filtrer si nécessaire
+            action = "CREATED" if project.created_at == project.updated_at else "UPDATED"
             if action_filter and action != action_filter:
                 continue
             
@@ -96,71 +96,100 @@ async def get_activity_feed(
                 }
             })
     
-    # ✅ 2. Récupérer les documents
+    # ═══════════════════════════════════════════════
+    # 2. Documents avec gestion du PAID
+    # ═══════════════════════════════════════════════
     if not type_filter or type_filter == "DOCUMENT":
         documents_query = await db.execute(
             select(Document)
-            .options(selectinload(Document.client))
+            .options(selectinload(Document.client),selectinload(Document.items),)
             .where(Document.user_id == current_user.id)
             .order_by(Document.created_at.desc())
-            .limit(limit)
+            .limit(limit * 2)  # ✅ On prend plus car on va générer plusieurs activités par doc
         )
         documents = documents_query.scalars().all()
         
         for doc in documents:
-            # Déterminer l'action et l'icône selon le statut
-            if doc.status == DocumentStatus.ACCEPTED:
+            client_name = doc.client.name if doc.client else "client"
+            
+            # ═══ Activité principale selon le statut actuel ═══
+            if doc.status == DocumentStatus.PAID and doc.type == DocumentType.FACTURE:
+                # ✅ NOUVEAU : Facture payée = événement majeur
+                action = "PAID"
+                icon = "banknote"  # ou "wallet", "credit-card"
+                color = "emerald"
+                subtitle = f"Facture payée par {client_name}"
+                timestamp = doc.paid_at  or doc.created_at
+            elif doc.status == DocumentStatus.ACCEPTED:
                 action = "ACCEPTED"
                 icon = "check-circle"
                 color = "emerald"
-                subtitle = f"Devis accepté par {doc.client.name if doc.client else 'client'}"
+                subtitle = f"Devis accepté par {client_name}"
+                timestamp = doc.accepted_at or doc.created_at
             elif doc.status == DocumentStatus.REFUSED:
                 action = "REFUSED"
                 icon = "x-circle"
                 color = "rose"
-                subtitle = f"Devis refusé par {doc.client.name if doc.client else 'client'}"
+                subtitle = f"Devis refusé par {client_name}"
+                timestamp = doc.refused_at or doc.created_at
             elif doc.status == DocumentStatus.SENT:
                 action = "SENT"
                 icon = "send"
                 color = "amber"
-                subtitle = f"Envoyé à {doc.client.name if doc.client else 'client'}"
+                subtitle = f"Envoyé à {client_name}"
+                timestamp = doc.sent_at or doc.created_at
             elif doc.status == DocumentStatus.VIEWED:
                 action = "VIEWED"
                 icon = "eye"
                 color = "sky"
-                subtitle = f"Consulté par {doc.client.name if doc.client else 'client'}"
+                subtitle = f"Consulté par {client_name}"
+                timestamp = doc.viewed_at or doc.created_at
             else:
                 action = "CREATED"
                 icon = "file"
                 color = "slate"
-                subtitle = f"{doc.type} créé"
+                subtitle = f"{doc.type.value} créé"
+                timestamp = doc.created_at
             
-            # Filtrer si nécessaire
             if action_filter and action != action_filter:
                 continue
-            
-            # Utiliser le timestamp le plus pertinent
-            timestamp = doc.viewed_at or doc.sent_at or doc.created_at
             
             activities.append({
                 "id": str(doc.id),
                 "type": "DOCUMENT",
                 "action": action,
-                "title": doc.number or f"{doc.type} {str(doc.id)[:8]}",
+                "title": doc.number or f"{doc.type.value} {str(doc.id)[:8]}",
                 "subtitle": subtitle,
                 "icon": icon,
                 "color": color,
-                "link": f"/dashboard/quotes/{doc.id}" if doc.type == "DEVIS" else f"/dashboard/invoices/{doc.id}",
+                "link": f"/dashboard/quotes/{doc.id}" if doc.type == DocumentType.DEVIS else f"/dashboard/invoices/{doc.id}",
                 "timestamp": timestamp.isoformat(),
                 "metadata": {
-                    "status": doc.status,
-                    "document_type": doc.type,
-                    "client_name": doc.client.name if doc.client else None,
+                    "status": doc.status.value if hasattr(doc.status, 'value') else doc.status,
+                    "document_type": doc.type.value if hasattr(doc.type, 'value') else doc.type,
+                    "client_name": client_name,
+                    "amount_cents": DocumentService.calculate_totals(doc.items)["grand_total_cents"] if doc.items else 0,
                 }
             })
+            
+            # ═══ Activité secondaire : si facture payée ET issue d'un devis ═══
+            # On ajoute un événement historique "le devis correspondant a été signé"
+            # (utile pour remonter dans le temps)
+            if (
+                doc.type == DocumentType.FACTURE 
+                and doc.status == DocumentStatus.PAID
+                and doc.source_document_id
+                and doc.accepted_at  # ou utiliser la date de création de la facture comme proxy
+            ):
+                # Pas d'ajout ici pour ne pas dupliquer — déjà couvert par l'activité du devis
+                pass
     
-    # ✅ 3. Trier par timestamp (plus récent en premier)
+    # ═══════════════════════════════════════════════
+    # 3. Trier par timestamp (plus récent en premier)
+    # ═══════════════════════════════════════════════
     activities.sort(key=lambda x: x["timestamp"], reverse=True)
     
-    # ✅ 4. Limiter le résultat
+    # ═══════════════════════════════════════════════
+    # 4. Limiter le résultat
+    # ═══════════════════════════════════════════════
     return activities[:limit]

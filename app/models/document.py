@@ -79,6 +79,11 @@ class Document(SQLModel, table=True):
     refusal_reason: Optional[str] = None
     signature_name: Optional[str] = Field(default=None, max_length=255)
 
+    paid_at: Optional[datetime] = Field(
+        default=None,
+        description="Date à laquelle la facture a été payée",
+    )
+
     share_token: Optional[str] = Field(
         default=None,
         index=True,
