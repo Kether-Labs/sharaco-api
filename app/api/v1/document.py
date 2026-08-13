@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
+from app.models.payment_schedule import PaymentSchedule,MilestoneStatus
 from sqlalchemy import func
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
@@ -826,6 +827,167 @@ async def get_document_for_client(
         "accepted_at": document.accepted_at,
         "refused_at": document.refused_at,
         "signature_name": document.signature_name,
+    }
+
+# app/api/v1/document.py - À ajouter
+
+@router.post("/{document_id}/next-invoice", response_model=dict)
+async def generate_next_invoice(
+    document_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Génère la facture de la prochaine milestone d'un devis accepté.
+    
+    Conditions :
+    - Le devis doit être ACCEPTED
+    - Le devis doit avoir un échéancier
+    - La précédente milestone doit être PAYÉE (sauf pour la 1ère)
+    - Il doit rester au moins une milestone PENDING
+    """
+    from app.services.invoiceService import InvoiceService
+    from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
+    
+    logger.info(f"💰 POST /documents/{document_id}/next-invoice")
+    
+    # 1. Charger le devis
+    quote = await DocumentService.get_by_id(db, document_id, current_user.id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    
+    if quote.type != DocumentType.DEVIS:
+        raise HTTPException(status_code=400, detail="Seuls les devis supportent cette action")
+    
+    if quote.status != DocumentStatus.ACCEPTED:
+        raise HTTPException(status_code=400, detail="Le devis doit être accepté")
+    
+    # 2. Charger les milestones
+    stmt = (
+        select(PaymentSchedule)
+        .where(PaymentSchedule.document_id == quote.id)
+        .order_by(PaymentSchedule.sequence.asc())
+    )
+    result = await db.execute(stmt)
+    milestones = list(result.scalars().all())
+    
+    if not milestones:
+        raise HTTPException(status_code=400, detail="Ce devis n'a pas d'échéancier")
+    
+    # 3. Trouver la prochaine milestone à facturer
+    next_milestone = None
+    
+    for milestone in milestones:
+        if milestone.status == MilestoneStatus.PENDING:
+            # C'est la prochaine - mais on vérifie que la précédente est payée
+            prev_index = milestone.sequence - 2  # sequence commence à 1
+            if prev_index >= 0:
+                prev_milestone = milestones[prev_index]
+                if prev_milestone.status != MilestoneStatus.PAID:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"La milestone '{prev_milestone.title}' doit être payée avant de facturer la suivante"
+                    )
+            next_milestone = milestone
+            break
+    
+    if not next_milestone:
+        raise HTTPException(
+            status_code=400,
+            detail="Toutes les milestones ont déjà été facturées"
+        )
+    
+    # 4. Générer la facture
+    try:
+        invoice = await InvoiceService.create_from_milestone(
+            db=db,
+            quote=quote,
+            milestone=next_milestone,
+            origin="manual",
+        )
+        
+        # 5. Marquer la milestone comme INVOICED
+        next_milestone.status = MilestoneStatus.INVOICED
+        next_milestone.invoice_id = invoice.id
+        next_milestone.invoiced_at = to_naive_utc(datetime.now(timezone.utc))
+        db.add(next_milestone)
+        
+        await db.commit()
+        
+        logger.info(
+            f"✅ Facture {invoice.number} créée pour milestone "
+            f"'{next_milestone.title}' ({next_milestone.percent}%)"
+        )
+        
+        return {
+            "message": f"Facture {invoice.number} créée ({next_milestone.title})",
+            "invoice_id": str(invoice.id),
+            "invoice_number": invoice.number,
+            "milestone_title": next_milestone.title,
+            "milestone_percent": next_milestone.percent,
+            "milestone_amount_cents": next_milestone.amount_cents,
+            "remaining_milestones": sum(
+                1 for m in milestones if m.status == MilestoneStatus.PENDING
+            ),
+        }
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ Erreur génération facture: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur lors de la génération de la facture")
+
+
+@router.post("/invoices/{invoice_id}/mark-paid")
+async def mark_invoice_as_paid(
+    invoice_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Marque une facture comme payée.
+    Si la facture est liée à une milestone, marque aussi la milestone comme PAID.
+    """
+    logger.info(f"💳 POST /invoices/{invoice_id}/mark-paid")
+    
+    invoice = await DocumentService.get_by_id(db, invoice_id, current_user.id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    
+    if invoice.type != DocumentType.FACTURE:
+        raise HTTPException(status_code=400, detail="Ce document n'est pas une facture")
+    
+    if invoice.status == DocumentStatus.PAID:
+        return {
+            "message": "Facture déjà payée",
+            "already_paid": True,
+        }
+    
+    # Marquer la facture comme payée
+    invoice.status = DocumentStatus.PAID
+    db.add(invoice)
+    
+    # Chercher si une milestone est liée à cette facture
+    stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
+    result = await db.execute(stmt)
+    milestone = result.scalar_one_or_none()
+    
+    if milestone:
+        milestone.status = MilestoneStatus.PAID
+        milestone.paid_at = to_naive_utc(datetime.now(timezone.utc))
+        db.add(milestone)
+        logger.info(f"✅ Milestone '{milestone.title}' marquée comme PAID")
+    
+    await db.commit()
+    await db.refresh(invoice)
+    
+    return {
+        "message": f"Facture {invoice.number} marquée comme payée",
+        "invoice_number": invoice.number,
+        "paid_at": invoice.sent_at,  # TODO: ajouter un paid_at au modèle
+        "milestone_updated": milestone is not None,
+        "already_paid": False,
     }
 
 @router.get("/{document_id}/pdf")

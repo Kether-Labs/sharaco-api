@@ -150,7 +150,7 @@ async def get_activity_feed(
                 "subtitle": subtitle,
                 "icon": icon,
                 "color": color,
-                "link": f"/dashboard/quotes/{doc.id}",
+                "link": f"/dashboard/quotes/{doc.id}" if doc.type == "DEVIS" else f"/dashboard/invoices/{doc.id}",
                 "timestamp": timestamp.isoformat(),
                 "metadata": {
                     "status": doc.status,
