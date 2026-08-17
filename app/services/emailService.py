@@ -31,7 +31,6 @@ class EmailService:
         """Envoie via Resend API."""
         try:
             from_email = settings.RESEND_FROM_EMAIL or "Sharaco <onboarding@resend.dev>"
-            
             logger.info(f"📧 Envoi Resend → {to_email} | From: {from_email}")
             
             email_data = {
@@ -42,7 +41,6 @@ class EmailService:
             }
             
             response = await asyncio.to_thread(resend.Emails.send, email_data)
-            
             email_id = response.get("id") if isinstance(response, dict) else response.id
             logger.info(f"✅ Email Resend envoyé | ID: {email_id}")
             return {"success": True, "id": email_id, "provider": "resend"}
@@ -75,10 +73,8 @@ class EmailService:
                     if settings.SMTP_USE_TLS:
                         server.starttls()
                         server.ehlo()
-                    
                     if settings.SMTP_USER and settings.SMTP_PASSWORD:
                         server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                    
                     server.sendmail(settings.SMTP_USER, [to_email], msg.as_string())
             
             await asyncio.to_thread(_send_sync)
@@ -112,24 +108,26 @@ class EmailService:
             logger.error(f"❌ Provider inconnu: {settings.EMAIL_PROVIDER}")
             return {"success": False, "error": f"Unknown provider: {settings.EMAIL_PROVIDER}"}
 
+    @staticmethod
     async def send_devis(
-    to_email: str,
-    client_name: str,
-    document_number: str,
-    total_amount: str,
-    client_url: str,  # ✅ Renommé de preview_url à client_url
-    due_date: str = None,  # ✅ Ajout pour cohérence
-    user_name: str = "",
-    user_company: str = "",
-    custom_message: str = "",
+        to_email: str,
+        client_name: str,
+        document_number: str,
+        total_amount: str,
+        client_url: str,
+        due_date: str = None,
+        user_name: str = "",
+        user_company: str = "",
+        custom_message: str = "",
     ) -> dict:
-   
+        """Envoie un devis avec le lien PRIVÉ client."""
         template = email_env.get_template("devis.html")
         html = template.render(
             to_name=client_name,
             document_number=document_number,
             total_amount=total_amount,
-            client_url=client_url,  # ✅ Lien privé
+            client_url=client_url,
+            due_date=due_date,
             user_name=user_name,
             user_company=user_company,
             custom_message=custom_message,
@@ -141,18 +139,17 @@ class EmailService:
             html_content=html,
         )
 
-
     @staticmethod
     async def send_facture(
-    to_email: str,
-    client_name: str,
-    document_number: str,
-    total_amount: str,
-    client_url: str,  # ✅ Renommé
-    due_date: str = None,  # ✅ Ajout
-    user_name: str = "",
-    user_company: str = "",
-    custom_message: str = "",
+        to_email: str,
+        client_name: str,
+        document_number: str,
+        total_amount: str,
+        client_url: str,
+        due_date: str = None,
+        user_name: str = "",
+        user_company: str = "",
+        custom_message: str = "",
     ) -> dict:
         """Envoie une facture avec le lien PRIVÉ client."""
         template = email_env.get_template("facture.html")
@@ -160,7 +157,7 @@ class EmailService:
             to_name=client_name,
             document_number=document_number,
             total_amount=total_amount,
-            client_url=client_url,  # ✅ Lien privé
+            client_url=client_url,
             due_date=due_date,
             user_name=user_name,
             user_company=user_company,
@@ -170,6 +167,49 @@ class EmailService:
         return await EmailService._send_email(
             to_email=to_email,
             subject=f"Facture {document_number} de {user_company}",
+            html_content=html,
+        )
+
+    # ═══════════════════════════════════════════════════════════════
+    # ✅ NOUVEAU : Email de prévention pour factures arrivant à échéance
+    # ═══════════════════════════════════════════════════════════════
+    @staticmethod
+    async def send_invoice_reminder(
+        to_email: str,
+        client_name: str,
+        document_number: str,
+        total_amount: str,
+        due_date: str,
+        days_left: int,
+        client_url: str = None,
+        user_company: str = "Sharaco",
+    ) -> dict:
+        """
+        Envoie un email de prévention : facture qui arrive à échéance.
+        
+        - days_left = 3 : rappel doux (J-3)
+        - days_left = 1 : rappel urgent (J-1)
+        """
+        template = email_env.get_template("reminder.html")
+        html = template.render(
+            to_name=client_name,
+            document_number=document_number,
+            total_amount=total_amount,
+            due_date=due_date,
+            days_left=days_left,
+            client_url=client_url,
+            user_company=user_company,
+        )
+        
+        # Urgence dans le sujet
+        if days_left <= 1:
+            subject = f"⚠️ Dernier rappel : facture {document_number} due demain"
+        else:
+            subject = f"⏰ Rappel : facture {document_number} à échéance dans {days_left} jours"
+        
+        return await EmailService._send_email(
+            to_email=to_email,
+            subject=subject,
             html_content=html,
         )
     
@@ -183,21 +223,15 @@ class EmailService:
         """Envoie une notification par email avec un template."""
         try:
             logger.info(f"📧 Envoi notification à {to_email} avec template '{template}'")
-            
-            # Charger le template
             tpl = email_env.get_template(template)
             html_content = tpl.render(**context)
-            
-            # Envoyer via le provider configuré
             result = await EmailService._send_email(
                 to_email=to_email,
                 subject=subject,
                 html_content=html_content,
             )
-            
             logger.info(f"✅ Notification envoyée: {result}")
             return result
-            
         except Exception as e:
             logger.error(f"❌ Erreur envoi notification: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
