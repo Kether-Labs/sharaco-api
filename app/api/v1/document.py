@@ -1092,7 +1092,7 @@ async def mark_invoice_as_paid(
     result = await db.execute(stmt)
     milestone = result.scalar_one_or_none()
 
-    from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
+    
     stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
     result = await db.execute(stmt)
     milestone = result.scalar_one_or_none()
