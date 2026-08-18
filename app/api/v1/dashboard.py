@@ -249,7 +249,83 @@ async def get_dashboard_stats(
         relances_echouees=relances_echouees,
     )
 
+# app/api/v1/dashboard.py
 
+@router.get("/overdue-alert", response_model=dict)
+async def get_overdue_alert(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retourne les infos pour le bandeau d'alerte."""
+    from sqlalchemy import func, distinct
+    from sqlalchemy.orm import selectinload
+    from datetime import datetime, timezone, timedelta
+    from app.utils.datetime import to_naive_utc
+    
+    now = to_naive_utc(datetime.now(timezone.utc))
+    today = now.date()
+    today_start = datetime.combine(today, datetime.min.time())
+    soon_end = datetime.combine(today + timedelta(days=3), datetime.max.time())
+    
+    # 1. Factures OVERDUE (déjà en retard)
+    overdue_stmt = (
+        select(Document)
+        .options(selectinload(Document.items))
+        .where(
+            Document.user_id == current_user.id,
+            Document.type == DocumentType.FACTURE,
+            Document.status != DocumentStatus.PAID,
+            #Document.status.not_([DocumentStatus.PAID]),
+            # Document.status.in_([DocumentStatus.OVERDUE, DocumentStatus.SENT, DocumentStatus.VIEWED]),
+            Document.due_date != None,
+            Document.due_date < today_start,
+        )
+        .order_by(Document.due_date.asc())
+    )
+    overdue_result = await db.execute(overdue_stmt)
+    overdue_invoices = list(overdue_result.scalars().all())
+    
+    overdue_cents = 0
+    oldest_days_late = 0
+    for inv in overdue_invoices:
+        subtotal = sum(i.quantity * i.unit_price_cents for i in inv.items)
+        tax = sum(int(i.quantity * i.unit_price_cents * i.tax_rate / 100) for i in inv.items)
+        overdue_cents += subtotal + tax
+        if inv.due_date:
+            oldest_days_late = max(oldest_days_late, (today - inv.due_date.date()).days)
+    
+    # 2. Factures qui expirent bientôt (SENT/VIEWED, due_date entre aujourd'hui et J+3)
+    soon_stmt = (
+        select(Document)
+        .options(selectinload(Document.items))
+        .where(
+            Document.user_id == current_user.id,
+            Document.type == DocumentType.FACTURE,
+            # Document.status.in_([DocumentStatus.SENT, DocumentStatus.VIEWED]),
+            Document.due_date != None,
+            Document.due_date >= today_start,
+            Document.due_date <= soon_end,
+        )
+    )
+    soon_result = await db.execute(soon_stmt)
+    soon_invoices = list(soon_result.scalars().all())
+    
+    print("----------------------------------------")
+
+    print(soon_invoices)
+    due_soon_cents = 0
+    for inv in soon_invoices:
+        subtotal = sum(i.quantity * i.unit_price_cents for i in inv.items)
+        tax = sum(int(i.quantity * i.unit_price_cents * i.tax_rate / 100) for i in inv.items)
+        due_soon_cents += subtotal + tax
+    
+    return {
+        "overdue_count": len(overdue_invoices),
+        "overdue_cents": overdue_cents,
+        "due_soon_count": len(soon_invoices),
+        "due_soon_cents": due_soon_cents,
+        "oldest_days_late": oldest_days_late,
+    }
 @router.get("/revenue", response_model=list[MonthlyRevenue])
 async def get_monthly_revenue(
     current_user: User = Depends(get_current_user),

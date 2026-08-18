@@ -7,6 +7,7 @@ from app.models.document import Document, DocumentItem, DocumentType, DocumentSt
 from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
 from app.utils.datetime import to_naive_utc
 from datetime import datetime, timezone
+from datetime import timedelta
 from uuid import UUID
 import logging
 
@@ -34,6 +35,13 @@ class InvoiceService:
 
         number = await InvoiceService._generate_invoice_number(db, quote.user_id)
 
+        if quote.due_date:
+            due_date = quote.due_date
+        else:
+            due_date = to_naive_utc(
+                datetime.now(timezone.utc) + 
+                timedelta(days=settings.default_payment_terms_days)
+            )
         invoice = Document(
             type=DocumentType.FACTURE,
             invoice_type=kind,
@@ -41,6 +49,7 @@ class InvoiceService:
             source_document_id=quote.id,
             status=DocumentStatus.DRAFT,
             number=number,
+            due_date=due_date,
             user_id=quote.user_id,
             client_id=quote.client_id,
             project_id=quote.project_id,
@@ -118,6 +127,17 @@ class InvoiceService:
 
         number = await InvoiceService._generate_invoice_number(db, quote.user_id)
 
+        due_date = None
+        if milestone.trigger_date:
+            # Utiliser la date prévue de la milestone
+            due_date = milestone.trigger_date
+        else:
+            # Fallback : due_date du devis + X jours, ou today + 30j
+            from app.services.billingSettingsService import BillingSettingsService
+            settings = await BillingSettingsService.get_or_create(db, quote.user_id)
+            base_date = quote.due_date or to_naive_utc(datetime.now(timezone.utc))
+            due_date = to_naive_utc(base_date + timedelta(days=settings.default_payment_terms_days))
+    
         invoice = Document(
             type=DocumentType.FACTURE,
             invoice_type=kind,
@@ -138,6 +158,7 @@ class InvoiceService:
             font_family=quote.font_family,
             show_bank_details=quote.show_bank_details,
             show_tax_id=quote.show_tax_id,
+            due_date=due_date,
             notes=(
                 f"{quote.notes or ''}\n\n"
                 f"Échéance {milestone.sequence}: {milestone.title} "
