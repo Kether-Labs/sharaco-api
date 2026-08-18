@@ -1606,6 +1606,10 @@ async def create_document(
         logger.error(f"❌ Erreur: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
+    document = await DocumentService.get_by_id(db, document.id, current_user.id)
+    if not document:
+        raise HTTPException(status_code=500, detail="Document créé mais non récupérable")
+    
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
 
@@ -1624,6 +1628,14 @@ def _enrich_document(doc, totals: dict) -> dict:
         "created_at": doc.created_at,
         "due_date": doc.due_date,
         "user_id": doc.user_id,
+        "client": {
+            "id": str(doc.client.id) if doc.client else None,
+            "name": doc.client.name if doc.client else None,
+            "email": doc.client.email if doc.client else None,
+            "phone": doc.client.phone if doc.client else None,
+            "address": doc.client.address if doc.client else None,
+        } if doc.client else None,
+        
         "client_id": doc.client_id,
         "template_id": doc.template_id,
         "layout_style": getattr(doc, 'layout_style', 'classic'),

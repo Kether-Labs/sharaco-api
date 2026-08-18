@@ -26,6 +26,7 @@ class DocumentStatus(str, Enum):
     REFUSED = "REFUSED" 
     PAID = "PAID"
     VIEWED = "VIEWED"
+    OVERDUE = "OVERDUE"
 
 
 def _utcnow() -> datetime:
