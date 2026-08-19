@@ -257,6 +257,7 @@ class DocumentEmailRequest(BaseModel):
     custom_message: Optional[str] = Field("", max_length=1000, description="Message personnalisé")
     # On récupère l'email du client en base, mais on peut forcer un email ici
     override_email: Optional[str] = Field(None, description="Forcer l'envoi à un autre email")
+    attach_pdf: bool = False
 
 
 class DocumentPreviewItem(BaseModel):

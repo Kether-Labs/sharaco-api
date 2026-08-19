@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
     # Démarrer le scheduler
     scheduler.add_job(
         _job_check_overdue,
-        CronTrigger(hour=0, minute=5),  # Tous les jours à 00:05 UTC
+        CronTrigger(hour=18, minute=48),  # Tous les jours à 00:05 UTC
         id="check_overdue",
         replace_existing=True,
     )

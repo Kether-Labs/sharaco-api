@@ -20,7 +20,7 @@ from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
 from app.utils.datetime import to_naive_utc 
 from datetime import datetime, timezone, timedelta
-
+from app.services.clientService import ClientService
 from app.schemas.document import (
     DocumentCreate,
     DocumentRead,
@@ -355,6 +355,12 @@ async def preview_document_pdf(
 # ============================================================
 
 
+
+
+
+
+
+
 @router.post("/{document_id}/send-email")
 async def send_document_email(
     document_id: UUID,
@@ -362,23 +368,49 @@ async def send_document_email(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Envoie un document par email avec le lien PRIVÉ client."""
+    """
+    Envoie un document (devis ou facture) par email au client.
+    
+    - Génère les tokens (share_token + client_token)
+    - Envoie l'email avec le lien privé
+    - Change le statut DRAFT → SENT
+    - Optionnel : joint le PDF en pièce jointe
+    
+    Returns:
+        - to_email : email destinataire
+        - client_url : lien privé pour le client
+        - share_url : lien public partageable
+        - document_number : numéro du document
+    """
     logger.info(f"📧 POST /documents/{document_id}/send-email")
     
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
     
-    from app.services.clientService import ClientService
+    # Vérification du statut
+    if document.status not in [DocumentStatus.DRAFT, DocumentStatus.SENT]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce document ne peut pas être envoyé (statut actuel: {document.status.value})"
+        )
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 2. Charger le client
+    # ═══════════════════════════════════════════════════════════════
+    
     client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
     
+    # Déterminer l'email destinataire
     to_email = email_data.override_email or client.email
     if not to_email:
         raise HTTPException(status_code=400, detail="Email du client requis")
     
-    # ✅ GÉNÉRER LES DEUX TOKENS
+    # ═══════════════════════════════════════════════════════════════
+    # 3. Générer les tokens (share + client)
+    # ═══════════════════════════════════════════════════════════════
     if not document.share_token:
         document.share_token = Document.generate_share_token()
         document.share_enabled = True
@@ -386,31 +418,38 @@ async def send_document_email(
             datetime.now(timezone.utc) + timedelta(days=30)
         )
     
-    # ✅ Token PRIVÉ pour le client (lié à l'email)
     if not document.client_token:
         document.client_token = Document.generate_share_token()
-        document.client_token_email = to_email  # ✅ Lié à l'email du client
+        document.client_token_email = to_email
     
     db.add(document)
     await db.commit()
     await db.refresh(document)
     
-    # ✅ URL PRIVÉE pour le client (dans l'email)
+    # ═══════════════════════════════════════════════════════════════
+    # 4. Construire les URLs
+    # ═══════════════════════════════════════════════════════════════
     base_url = settings.FRONTEND_URL or "http://localhost:3000"
-    client_url = f"{base_url}/client/{document.client_token}"  # ← Lien privé
+    client_url = f"{base_url}/client/{document.client_token}"
+    share_url = f"{base_url}/view/{document.share_token}"
     
-    # Préparer les données
+    # ═══════════════════════════════════════════════════════════════
+    # 5. Calculer les totaux
+    # ═══════════════════════════════════════════════════════════════
     totals = DocumentService.calculate_totals(document.items)
-    total_amount = f"{totals['grand_total_cents'] / 100:.2f} €"
+    # ✅ Formatage FCFA : pas de division par 100
+    total_amount = f"{totals['grand_total_cents']:,} FCFA"
     
-    # ✅ Formater la date d'échéance si présente
+    # ═══════════════════════════════════════════════════════════════
+    # 6. Formater la date d'échéance
+    # ═══════════════════════════════════════════════════════════════
     due_date_str = None
     if document.due_date:
         due_date_str = document.due_date.strftime("%d/%m/%Y")
     
-    base_url = settings.FRONTEND_URL or "http://localhost:3000"
-    client_url = f"{base_url}/client/{document.client_token}"  # ✅ Lien PRIVÉ
-    
+    # ═══════════════════════════════════════════════════════════════
+    # 7. Préparer les infos user
+    # ═══════════════════════════════════════════════════════════════
     user_name = (
         getattr(current_user, 'full_name', None) or
         getattr(current_user, 'first_name', None) or
@@ -418,48 +457,104 @@ async def send_document_email(
     )
     user_company = getattr(current_user, 'company_name', None) or "Sharaco"
     
-    # Envoyer l'email selon le type
-    if document.type == DocumentType.DEVIS:
-        result = await EmailService.send_devis(
-            to_email=to_email,
-            client_name=client.name,
-            document_number=document.number or str(document_id),
-            total_amount=total_amount,
-            client_url=client_url,  # ✅ Lien privé
-            due_date=due_date_str,
-            user_name=user_name,
-            user_company=user_company,
-            custom_message=email_data.custom_message,
-        )
-    else:
-        result = await EmailService.send_facture(
-            to_email=to_email,
-            client_name=client.name,
-            document_number=document.number or str(document_id),
-            total_amount=total_amount,
-            client_url=client_url,  # ✅ Lien privé
-            due_date=due_date_str,
-            user_name=user_name,
-            user_company=user_company,
-            custom_message=email_data.custom_message,
-        )
+    # ═══════════════════════════════════════════════════════════════
+    # 8. Générer le PDF si demandé (optionnel)
+    # ═══════════════════════════════════════════════════════════════
+    pdf_bytes = None
+    if email_data.attach_pdf:
+        try:
+            from app.services.pdfRenderer import pdf_renderer
+            from app.services.templateService import TemplateService
+            
+            template = await TemplateService.get_by_id(db, document.template_id, current_user.id)
+            if not template:
+                template = await TemplateService.get_default(db, current_user.id)
+            
+            pdf_buffer = await pdf_renderer.render_pdf(
+                db=db,
+                document=document,
+                template=template,
+                user=current_user,
+                client=client,
+            )
+            pdf_bytes = pdf_buffer.read()
+            logger.info(f"📄 PDF généré pour {document.number}")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de générer le PDF: {e}")
+            pdf_bytes = None
     
+    # ═══════════════════════════════════════════════════════════════
+    # 9. Envoyer l'email selon le type
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        if document.type == DocumentType.DEVIS:
+            result = await EmailService.send_devis(
+                to_email=to_email,
+                client_name=client.name,
+                document_number=document.number or str(document_id),
+                total_amount=total_amount,
+                client_url=client_url,
+                due_date=due_date_str,
+                user_name=user_name,
+                user_company=user_company,
+                custom_message=email_data.custom_message or "",
+            )
+        else:  # FACTURE
+            result = await EmailService.send_facture(
+                to_email=to_email,
+                client_name=client.name,
+                document_number=document.number or str(document_id),
+                total_amount=total_amount,
+                client_url=client_url,
+                due_date=due_date_str,
+                user_name=user_name,
+                user_company=user_company,
+                custom_message=email_data.custom_message or "",
+            )
+    except Exception as e:
+        logger.error(f"❌ Erreur envoi email: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur d'envoi: {str(e)}")
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 10. Vérifier le succès
+    # ═══════════════════════════════════════════════════════════════
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=f"Erreur d'envoi: {result.get('error')}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur d'envoi: {result.get('error', 'Erreur inconnue')}"
+        )
     
-    # Mettre à jour le statut
+    # ═══════════════════════════════════════════════════════════════
+    # 11. Mettre à jour le statut DRAFT → SENT
+    # ═══════════════════════════════════════════════════════════════
     if document.status == DocumentStatus.DRAFT:
         document.status = DocumentStatus.SENT
         document.sent_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
+        
+        logger.info(
+            f"✅ {document.type.value} {document.number} envoyé à {to_email} "
+            f"(statut: DRAFT → SENT)"
+        )
+    else:
+        logger.info(
+            f"📧 {document.type.value} {document.number} renvoyé à {to_email}"
+        )
     
+    # ═══════════════════════════════════════════════════════════════
+    # 12. Retourner la réponse
+    # ═══════════════════════════════════════════════════════════════
     return {
         "message": "Email envoyé avec succès",
         "to_email": to_email,
-        "client_url": client_url,  # ✅ Lien privé envoyé
-        "share_url": f"{base_url}/view/{document.share_token}",  # Lien public
-        "resend_id": result.get("id")
+        "document_number": document.number,
+        "document_type": document.type.value,
+        "client_url": client_url,
+        "share_url": share_url,
+        "pdf_attached": pdf_bytes is not None,
+        "provider": result.get("provider"),
+        "email_id": result.get("id"),
     }
 
 

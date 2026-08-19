@@ -1,10 +1,14 @@
 # app/services/invoiceService.py
 
+from multiprocessing.dummy.connection import Client
+from app.core.config import settings
+from app.services.documentService import DocumentService
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.document import Document, DocumentItem, DocumentType, DocumentStatus, InvoiceType
 from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
+from app.models.user import User
 from app.utils.datetime import to_naive_utc
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -209,9 +213,83 @@ class InvoiceService:
         return f"FACT-{year}-{count + 1:03d}"
 
     @staticmethod
-    async def send_invoice(db: AsyncSession, invoice: Document) -> None:
-        """Envoie la facture au client (à implémenter avec EmailService)."""
-        invoice.status = DocumentStatus.SENT
-        invoice.sent_at = to_naive_utc(datetime.now(timezone.utc))
-        db.add(invoice)
-        logger.info(f"📧 Facture {invoice.number} envoyée")
+    async def send_invoice(
+    db: AsyncSession,
+    invoice: Document,
+    user: User,
+    client: Client,
+    custom_message: str = "",
+    ) -> dict:
+        """
+        Envoie une facture par email au client.
+        Change le statut de DRAFT à SENT.
+        Génère le PDF en pièce jointe.
+        """
+        from app.services.pdfRenderer import pdf_renderer
+        from app.services.templateService import TemplateService
+        from app.services.emailService import EmailService
+        
+        # 1. Vérifications
+        if invoice.type != DocumentType.FACTURE:
+            raise ValueError("Ce document n'est pas une facture")
+        
+        if invoice.status != DocumentStatus.DRAFT:
+            raise ValueError(f"La facture n'est pas en brouillon (statut actuel: {invoice.status.value})")
+        
+        if not client.email:
+            raise ValueError("Le client n'a pas d'email")
+        
+        # 2. Récupérer le template
+        template = await TemplateService.get_by_id(db, invoice.template_id, user.id)
+        if not template:
+            template = await TemplateService.get_default(db, user.id)
+        
+        # 3. Générer le PDF
+        pdf_buffer = await pdf_renderer.render_pdf(
+            db=db,
+            document=invoice,
+            template=template,
+            user=user,
+            client=client,
+        )
+        pdf_bytes = pdf_buffer.read()
+        
+        # 4. Calculer le montant total
+        totals = DocumentService.calculate_totals(invoice.items)
+        total_amount = f"{totals['grand_total_cents'] / 100:,.2f}"
+        
+        # 5. Générer le lien privé client
+        if not invoice.client_token:
+            invoice.client_token = Document.generate_share_token()
+            invoice.client_token_email = client.email
+            invoice.share_enabled = True
+            db.add(invoice)
+        
+        base_url = settings.FRONTEND_URL or "http://localhost:3000"
+        client_url = f"{base_url}/client/{invoice.client_token}"
+        
+        # 6. Envoyer l'email
+        result = await EmailService.send_facture(
+            to_email=client.email,
+            client_name=client.name or "Client",
+            document_number=invoice.number or str(invoice.id),
+            total_amount=total_amount,
+            client_url=client_url,
+            due_date=invoice.due_date.strftime("%d/%m/%Y") if invoice.due_date else None,
+            user_name=getattr(user, 'full_name', '') or user.email,
+            user_company=user.company_name or "Sharaco",
+            custom_message=custom_message,
+        )
+        
+        # 7. Si succès, changer le statut
+        if result.get("success"):
+            invoice.status = DocumentStatus.SENT
+            invoice.sent_at = to_naive_utc(datetime.now(timezone.utc))
+            db.add(invoice)
+            await db.commit()
+            
+            logger.info(f"📧 Facture {invoice.number} envoyée à {client.email}")
+        else:
+            logger.error(f"❌ Échec envoi facture {invoice.number}: {result.get('error')}")
+        
+        return result
