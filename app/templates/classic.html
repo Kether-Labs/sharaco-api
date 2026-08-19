@@ -341,7 +341,7 @@
         .total-row.grand-total {
             margin-top: 10px;
             padding: 15px 0;
-            border-top: 2px solid {{ template.primary_color or '#1a1a1a' }};
+            border-top: 1px solid {{ template.primary_color or '#1a1a1a' }};
             font-size: 18px;
             font-weight: 700;
             color: {{ template.primary_color or '#1a1a1a' }};
@@ -364,6 +364,231 @@
             font-size: 18px;
             font-weight: 700;
             color: {{ template.primary_color or '#1a1a1a' }};
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           ✨ ÉCHÉANCIER DE PAIEMENT (style Elegant)
+        ══════════════════════════════════════════════════════════════ */
+        .schedule-section {
+            padding: 0 50px 50px;
+            break-inside: auto;
+            page-break-inside: auto;
+        }
+
+        .schedule-header {
+            margin-bottom: 10px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #0000008f;
+        }
+
+        .schedule-title-wrapper {
+            display: table;
+            width: 100%;
+        }
+
+        .schedule-title-left {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .schedule-title-right {
+            display: table-cell;
+            vertical-align: middle;
+            text-align: right;
+        }
+
+        .schedule-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 10pt;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin: 0;
+            letter-spacing: 0.5px;
+        }
+
+        .schedule-count-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            background: {{template.primary_color or "#c9a84c"}};
+            color: white;
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 20px;
+        }
+
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .schedule-table thead {
+            display: table-header-group;
+        }
+
+        .schedule-table thead tr {
+            border-bottom: 1px solid {{ template.primary_color or '#1a1a1a' }};
+        }
+
+        .schedule-table th {
+            text-align: left;
+            padding: 12px 10px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .schedule-table th.text-right {
+            text-align: right;
+        }
+
+        .schedule-table th.text-center {
+            text-align: center;
+        }
+
+        .schedule-table tbody tr {
+            border-bottom: 1px solid #e5e7eb;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        .schedule-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .schedule-table td {
+            padding: 16px 10px;
+            font-size: 13px;
+            vertical-align: middle;
+            color: #1f2937;
+        }
+
+        .schedule-table td.text-right {
+            text-align: right;
+        }
+
+        .schedule-table td.text-center {
+            text-align: center;
+        }
+
+        .col-seq { width: 8%; }
+        .col-title { width: 37%; }
+        .col-date { width: 20%; }
+        .col-percent { width: 15%; }
+        .col-amount { width: 20%; }
+
+        /* Numéro séquence - style élégant avec cercle doré */
+        .seq-circle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: {{template.primary_color or "#c9a84c"}};
+            color: white;
+            font-family: 'Playfair Display', serif;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 50%;
+        }
+
+        /* Titre échéance */
+        .schedule-title-cell {
+            font-weight: 600;
+            color: #1f2937;
+            line-height: 1.4;
+            font-size: 12px;
+        }
+
+        .schedule-desc-cell {
+            display: block;
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 4px;
+            line-height: 1.4;
+            font-style: italic;
+        }
+
+        /* Date */
+        .schedule-date-cell {
+            font-size: 13px;
+            color: #1f2937;
+            font-weight: 500;
+        }
+
+        .schedule-date-empty {
+            font-size: 12px;
+            color: #9ca3af;
+            font-style: italic;
+        }
+
+        /* Pourcentage */
+        .schedule-percent-cell {
+            font-size: 10px;
+            color: #000000;
+            font-weight: 700;
+            
+        }
+
+        /* Montant */
+        .schedule-amount-cell {
+            font-size: 13px;
+            color: #1f2937;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* Ligne de total */
+        .schedule-table tfoot tr td {
+            padding: 16px 10px;
+            border-top: 1px solid {{ template.primary_color or '#1a1a1a' }};
+        }
+
+        .schedule-total-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .schedule-total-percent {
+            font-size: 12px;
+            color: #000000;
+            font-weight: 700;
+            
+        }
+
+        .schedule-total-amount {
+            font-size: 12px;
+            color: {{ template.primary_color or '#1a1a1a' }};
+            font-weight: 700;
+            white-space: nowrap;
+          
+        }
+
+        /* Note finale */
+        .schedule-note {
+            margin-top: 20px;
+            padding: 16px 20px;
+            background: #f9fafb;
+            border-left: 3px solid #c9a84c;
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.7;
+        }
+
+        .schedule-note strong {
+            display: block;
+            color: #1f2937;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 700;
+            margin-bottom: 6px;
         }
 
         /* ══════════════════════════════════════════════════════════════
@@ -420,7 +645,7 @@
            PAGE BREAK CONTROL
         ══════════════════════════════════════════════════════════════ */
         @media print {
-            .header, .parties, .items-section, .summary-section {
+            .header, .parties, .items-section, .summary-section, .schedule-section {
                 page-break-inside: avoid;
             }
             
@@ -489,12 +714,7 @@
                         <span class="meta-value">{{ user.tax_id }}</span>
                     {% endif %}
                 </td>
-                <td style="width: 25%;">
-                    <span class="meta-label">Statut</span>
-                    <span class="status-badge status-{{ document.status.value.lower() if document.status else 'draft' }}">
-                        {{ document.status.value if document.status else 'Brouillon' }}
-                    </span>
-                </td>
+                
             </tr>
         </table>
     </div>
@@ -550,13 +770,13 @@
             </thead>
             <tbody>
                 {% for item in items %}
-                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) / 100 %}
+                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) %}
                 <tr>
                     <td class="col-desc font-medium">{{ item.description or 'Article sans description' }}</td>
                     <td class="col-qty text-right">{{ item.quantity or 1 }}</td>
-                    <td class="col-price text-right">{{ "%.2f"|format((item.unit_price_cents or 0) / 100) }} {{ currency }}</td>
+                    <td class="col-price text-right">{{ "{:,}".format(item.unit_price_cents or 0) }} {{ currency }}</td>
                     <td class="col-tva text-right">{{ item.tax_rate or 0 }}%</td>
-                    <td class="col-total text-right font-medium">{{ "%.2f"|format(ht) }} {{ currency }}</td>
+                    <td class="col-total text-right font-medium">{{ "{:,}".format(ht) }} {{ currency }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -574,21 +794,104 @@
                     <div class="totals-box">
                         <div class="total-row">
                             <div class="total-label-cell">Sous-total HT</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.subtotal_cents) }} {{ currency }}</div>
                         </div>
                         <div class="total-row">
                             <div class="total-label-cell">TVA</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.tax_total_cents) }} {{ currency }}</div>
                         </div>
                         <div class="total-row grand-total">
                             <div class="total-label-cell">TOTAL TTC</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.grand_total_cents) }} {{ currency }}</div>
                         </div>
                     </div>
                 </td>
             </tr>
         </table>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ✨ ÉCHÉANCIER DE PAIEMENT
+    ══════════════════════════════════════════════════════════════ -->
+    {% if document.payment_schedule and document.payment_schedule|length > 0 %}
+    {% set total_percent = document.payment_schedule | sum(attribute='percent') %}
+    {% set total_amount = document.payment_schedule | sum(attribute='amount_cents') %}
+    <div class="schedule-section">
+        <!-- Header avec badge -->
+        <div class="schedule-header">
+            <div class="schedule-title-wrapper">
+                <div class="schedule-title-left">
+                    <h2 class="schedule-title">Échéancier de paiement</h2>
+                </div>
+                <div class="schedule-title-right">
+                    <span class="schedule-count-badge">
+                        {{ document.payment_schedule|length }} tranche{{ 's' if document.payment_schedule|length > 1 else '' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tableau -->
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th class="col-seq text-center">N°</th>
+                    <th class="col-title">ÉCHÉANCE</th>
+                    <th class="col-date">DATE PRÉVUE</th>
+                    <th class="col-percent text-center">PART</th>
+                    <th class="col-amount text-right">MONTANT TTC</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for milestone in document.payment_schedule | sort(attribute='sequence') %}
+                <tr>
+                    <td class="text-center">
+                        <span class="seq-circle">{{ milestone.sequence }}</span>
+                    </td>
+                    <td>
+                        <span class="schedule-title-cell">{{ milestone.title }}</span>
+                        {% if milestone.description %}
+                        <span class="schedule-desc-cell">{{ milestone.description }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if milestone.trigger_date %}
+                        <span class="schedule-date-cell">{{ milestone.trigger_date.strftime('%d/%m/%Y') }}</span>
+                        {% else %}
+                        <span class="schedule-date-empty">À définir</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <span class="schedule-percent-cell">{{ milestone.percent }}%</span>
+                    </td>
+                    <td class="text-right">
+                        <span class="schedule-amount-cell">{{ "{:,}".format(milestone.amount_cents) }} {{ currency }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3">
+                        <span class="schedule-total-label">Total échéancier</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="schedule-total-percent">{{ total_percent }}%</span>
+                    </td>
+                    <td class="text-right">
+                        <span class="schedule-total-amount">{{ "{:,}".format(total_amount) }} {{ currency }}</span>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Note -->
+        <div class="schedule-note">
+            <strong>Note</strong>
+            Chaque échéance fera l'objet d'une facture distincte. Paiement exigible dans les 30 jours suivant l'émission.
+        </div>
+    </div>
+    {% endif %}
 
     <!-- ══════════════════════════════════════════════════════════════
          FOOTER

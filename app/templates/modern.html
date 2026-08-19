@@ -74,7 +74,7 @@
             color: white;
             margin: -15mm -15mm 30px -15mm;
             padding: 20px 25px;
-            border-bottom: 4px solid rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
         }
 
         .header-table {
@@ -272,7 +272,7 @@
         }
 
         .items-table thead tr {
-            border-bottom: 3px solid #18181b;
+            border-bottom: 1px solid #18181b;
         }
 
         .items-table th {
@@ -367,7 +367,7 @@
         }
 
         .total-row.grand-total {
-            border-top: 3px solid #18181b;
+            border-top: 1px solid #18181b;
             border-bottom: none;
             padding-top: 12px;
             margin-top: 8px;
@@ -399,6 +399,223 @@
             font-size: 15pt;
             font-weight: 900;
             color: {{ template.primary_color or '#0ea5e9' }};
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           ✨ ÉCHÉANCIER DE PAIEMENT (style Modern)
+        ═══════════════════════════════════════════════════════════════ */
+        .schedule-section {
+            margin-bottom: 30px;
+            break-inside: auto;
+            page-break-inside: auto;
+        }
+
+        .schedule-header {
+            display: table;
+            width: 100%;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid {{ template.primary_color or '#0ea5e9' }};
+        }
+
+        .schedule-header-left {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .schedule-header-right {
+            display: table-cell;
+            vertical-align: middle;
+            text-align: right;
+        }
+
+        .schedule-title {
+            font-size: 10pt;
+            font-weight: 800;
+      
+         
+            color: #09090b;
+            margin: 0;
+        }
+
+        .schedule-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: {{ template.primary_color or '#0ea5e9' }};
+            color: white;
+            font-size: 7pt;
+            font-weight: 800;
+           
+            letter-spacing: 0.08em;
+            border-radius: 3px;
+        }
+
+        .schedule-table {
+            width: 100%;
+           
+        }
+
+        .schedule-table thead {
+            display: table-header-group;
+        }
+
+        .schedule-table thead tr {
+            border-bottom: 1px solid #18181b;
+        }
+
+        .schedule-table th {
+            text-align: left;
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #71717a;
+            font-weight: 700;
+            padding: 10px 8px;
+        }
+
+        .schedule-table th.text-right {
+            text-align: right;
+        }
+
+        .schedule-table th.text-center {
+            text-align: center;
+        }
+
+        .schedule-table tbody tr {
+            border-bottom: 1px solid #f4f4f5;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        .schedule-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .schedule-table td {
+            padding: 12px 8px;
+            font-size: 10pt;
+            vertical-align: middle;
+            color: #18181b;
+        }
+
+        .schedule-table td.text-right {
+            text-align: right;
+        }
+
+        .schedule-table td.text-center {
+            text-align: center;
+        }
+
+        .col-seq { width: 8%; }
+        .col-title { width: 37%; }
+        .col-date { width: 20%; }
+        .col-percent { width: 15%; }
+        .col-amount { width: 20%; }
+
+        /* Numéro séquence - badge rond coloré */
+        .seq-circle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: {{ template.primary_color or '#0ea5e9' }};
+            color: white;
+            font-size: 8pt;
+            font-weight: 800;
+            border-radius: 50%;
+        }
+
+        /* Titre échéance */
+        .schedule-title-cell {
+            font-weight: 600;
+            color: #18181b;
+            line-height: 1;
+            font-size:12px;
+        }
+
+        .schedule-desc-cell {
+            display: block;
+            font-size: 6pt;
+            color: #71717a;
+            margin-top: 3px;
+            line-height: 1.4;
+            font-style: italic;
+        }
+
+        /* Date */
+        .schedule-date-cell {
+            font-size: 10pt;
+            color: #18181b;
+            font-weight: 600;
+        }
+
+        .schedule-date-empty {
+            font-size: 9pt;
+            color: #a1a1aa;
+            font-style: italic;
+        }
+
+        /* Pourcentage */
+        .schedule-percent-cell {
+            font-size: 10pt;
+            color: {{ template.primary_color or '#0ea5e9' }};
+            font-weight: 800;
+        }
+
+        /* Montant */
+        .schedule-amount-cell {
+            font-size: 10pt;
+            color: #18181b;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        /* Ligne de total */
+        .schedule-table tfoot tr td {
+            padding: 12px 8px;
+            border-top: 1px solid #18181b;
+        }
+
+        .schedule-total-label {
+            font-size: 7pt;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #71717a;
+            font-weight: 700;
+        }
+
+        .schedule-total-percent {
+            font-size: 10pt;
+            color: {{ template.primary_color or '#0ea5e9' }};
+            font-weight: 800;
+        }
+
+        .schedule-total-amount {
+            font-size: 12pt;
+            color: {{ template.primary_color or '#0ea5e9' }};
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        /* Note finale */
+        .schedule-note {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: #fafafa;
+            border-left: 3px solid {{ template.primary_color or '#0ea5e9' }};
+            font-size: 8.5pt;
+            color: #52525b;
+            line-height: 1.6;
+        }
+
+        .schedule-note strong {
+            color: #09090b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 7.5pt;
+            display: block;
+            margin-bottom: 2px;
         }
 
         /* ═══════════════════════════════════════════════════════════════
@@ -496,7 +713,7 @@
            PAGE BREAK CONTROL
         ═══════════════════════════════════════════════════════════════ */
         @media print {
-            .header, .addresses, .items-section, .totals-section {
+            .header, .addresses, .items-section, .totals-section, .signature-section {
                 page-break-inside: avoid;
             }
             
@@ -615,15 +832,15 @@
             </thead>
             <tbody>
                 {% for item in items %}
-                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) / 100 %}
+                {% set ht = (item.quantity or 1) * (item.unit_price_cents or 0) %}
                 <tr>
                     <td class="col-desc">
                         <div class="item-desc">{{ item.description or 'Article sans description' }}</div>
                     </td>
                     <td class="col-qty">{{ item.quantity or 1 }}</td>
-                    <td class="col-price">{{ "%.2f"|format((item.unit_price_cents or 0) / 100) }} {{ currency }}</td>
+                    <td class="col-price">{{ "{:,}".format(item.unit_price_cents or 0) }} {{ currency }}</td>
                     <td class="col-tva">{{ item.tax_rate or 0 }}%</td>
-                    <td class="col-total">{{ "%.2f"|format(ht) }} {{ currency }}</td>
+                    <td class="col-total">{{ "{:,}".format(ht) }} {{ currency }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -646,76 +863,108 @@
                     <div class="totals-box">
                         <div class="total-row">
                             <div class="total-label-cell">Total HT</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.subtotal_cents) }} {{ currency }}</div>
                         </div>
                         <div class="total-row">
                             <div class="total-label-cell">TVA Total</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.tax_total_cents) }} {{ currency }}</div>
                         </div>
                         <div class="total-row grand-total">
                             <div class="total-label-cell">TOTAL TTC</div>
-                            <div class="total-value-cell">{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</div>
+                            <div class="total-value-cell">{{ "{:,}".format(totals.grand_total_cents) }} {{ currency }}</div>
                         </div>
                     </div>
                 </td>
             </tr>
         </table>
     </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ✨ ÉCHÉANCIER DE PAIEMENT
+    ═══════════════════════════════════════════════════════════════ -->
+    {% if document.payment_schedule and document.payment_schedule|length > 0 %}
+    {% set total_percent = document.payment_schedule | sum(attribute='percent') %}
+    {% set total_amount = document.payment_schedule | sum(attribute='amount_cents') %}
+    <div class="schedule-section">
+        <!-- Header avec badge -->
+        <div class="schedule-header">
+            <div class="schedule-header-left">
+                <h2 class="schedule-title">Échéancier de paiement</h2>
+            </div>
+            <div class="schedule-header-right">
+                <span class="schedule-badge">
+                    {{ document.payment_schedule|length }} tranche{{ 's' if document.payment_schedule|length > 1 else '' }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Tableau -->
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th class="col-seq text-center">N°</th>
+                    <th class="col-title">ÉCHÉANCE</th>
+                    <th class="col-date">DATE PRÉVUE</th>
+                    <th class="col-percent text-center">PART</th>
+                    <th class="col-amount text-right">MONTANT TTC</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for milestone in document.payment_schedule | sort(attribute='sequence') %}
+                <tr>
+                    <td class="text-center">
+                        <span class="seq-circle">{{ milestone.sequence }}</span>
+                    </td>
+                    <td>
+                        <span class="schedule-title-cell">{{ milestone.title }}</span>
+                        {% if milestone.description %}
+                        <span class="schedule-desc-cell">{{ milestone.description }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if milestone.trigger_date %}
+                        <span class="schedule-date-cell">{{ milestone.trigger_date.strftime('%d/%m/%Y') }}</span>
+                        {% else %}
+                        <span class="schedule-date-empty">À définir</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <span class="schedule-percent-cell">{{ milestone.percent }}%</span>
+                    </td>
+                    <td class="text-right">
+                        <span class="schedule-amount-cell">{{ "{:,}".format(milestone.amount_cents) }} {{ currency }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3">
+                        <span class="schedule-total-label">Total échéancier</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="schedule-total-percent">{{ total_percent }}%</span>
+                    </td>
+                    <td class="text-right">
+                        <span class="schedule-total-amount">{{ "{:,}".format(total_amount) }} {{ currency }}</span>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Note -->
+        <div class="schedule-note">
+            <strong>Note</strong>
+            Chaque échéance fera l'objet d'une facture distincte. Paiement exigible dans les 30 jours suivant l'émission.
+        </div>
+    </div>
+    {% endif %}
 
     <!-- ═══════════════════════════════════════════════════════════════
          SIGNATURE
     ═══════════════════════════════════════════════════════════════ -->
-    <div class="signature-section">
-        <table class="signature-table">
-            <tr>
-                <td style="width: 50%;"></td>
-                <td style="width: 50%;">
-                    <div class="sig-label">BON POUR ACCORD (SIGNATURE)</div>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td class="sig-box">Cachet et signature</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         FOOTER
-    ═══════════════════════════════════════════════════════════════ -->
-    <div class="footer">
-        <table class="footer-table">
-            <tr>
-                <td style="width: 33.33%;">
-                    <div class="footer-col-title">COORDONNÉES</div>
-                    <div>
-                        {{ user.company_name or 'Entreprise' }}<br>
-                        {% if user.address %}{{ user.address }}<br>{% endif %}
-                        {{ user.email or '' }}
-                    </div>
-                </td>
-                <td style="width: 33.33%;">
-                    <div class="footer-col-title">INFORMATIONS LÉGALES</div>
-                    <div>
-                        SIRET: {{ user.tax_id or 'Non renseigné' }}<br>
-                        {% if user.vat_number %}TVA Intra: {{ user.vat_number }}{% endif %}
-                    </div>
-                </td>
-                <td style="width: 33.33%;">
-                    <div class="footer-col-title">RÈGLEMENT</div>
-                    <div>
-                        {% if user.payment_info %}
-                            <div class="bank-info">{{ user.payment_info }}</div>
-                        {% else %}
-                            Paiement à réception de facture.<br>
-                            Délai: 30 jours
-                        {% endif %}
-                    </div>
-                </td>
-            </tr>
-        </table>
-    </div>
+   
+  
 </div>
 
 </body>
