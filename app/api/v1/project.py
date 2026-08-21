@@ -4,10 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from uuid import UUID
+from app.schemas.project_tree import ProjectTreeResponse
+from app.schemas.project_tree import ProjectTreeResponse
 from typing import Optional
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
+from app.models.document import Document, DocumentType, DocumentStatus,DocumentItem
 from app.models.client import Client
 from app.services.projetService import ProjectService
 from app.schemas.projet import (
@@ -30,6 +33,34 @@ import logging
 
 router = APIRouter(tags=["projects"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/{project_id}/tree", response_model=ProjectTreeResponse)
+async def get_project_tree(
+    project_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retourne l'arborescence complète d'un projet :
+    - Devis avec leurs milestones
+    - Factures groupées par devis
+    - Stats agrégées du projet
+    """
+    logger.info(f"🌳 GET /projects/{project_id}/tree")
+    
+    try:
+        tree = await ProjectService.get_project_tree(
+            db=db,
+            project_id=project_id,
+            user_id=current_user.id,
+        )
+        return tree
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Erreur get_project_tree: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur serveur")
 
 
 @router.get("/{project_id}/documents", response_model=list[DocumentRead])
