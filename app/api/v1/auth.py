@@ -4,13 +4,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_db
 from app.services.authService import AuthService
+from app.core.security import verify_password, get_password_hash
+from sqlmodel import select
 from app.services.userService import UserService
 import secrets
 from app.core.security import create_access_token, decode_access_token,hash_password
 from app.core.deps import get_current_user
 from app.core.config import settings
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, Token
+from app.schemas.user import UserCreate, UserRead, Token,UserUpdate,PasswordUpdate
 from app.core.security import verify_password, create_access_token
 import logging
 from app.schemas.auth import RegisterRequest, RegisterResponse
@@ -185,6 +187,55 @@ async def read_current_user(
 ):
     """Retourne le profil de l'utilisateur connecté."""
     return current_user
+
+@router.put("/me", response_model=UserRead)
+async def update_profile(
+    data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Met à jour le profil (infos perso + entreprise)."""
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Vérifier l'unicité si l'email change
+    new_email = update_data.get("email")
+    if new_email and new_email != current_user.email:
+        existing = await db.execute(
+            select(User).where(User.email == new_email)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
+
+    # Appliquer les champs fournis
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+
+    db.add(current_user)
+    await db.commit()
+    await db.refresh(current_user)
+
+    logger.info(f"✅ Profil mis à jour: {current_user.email}")
+    return current_user
+
+@router.put("/me/password")
+async def change_password(
+    data: PasswordUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change le mot de passe."""
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
+
+    current_user.hashed_password = get_password_hash(data.new_password)
+    db.add(current_user)
+    await db.commit()
+
+    logger.info(f"🔒 Mot de passe changé: {current_user.email}")
+    return {"message": "Mot de passe mis à jour avec succès"}
 
 @router.post("/verify-email",response_model=bool)
 @limiter.limit("10/minute") 

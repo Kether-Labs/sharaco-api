@@ -4,6 +4,7 @@ from jinja2 import Environment, FileSystemLoader
 from io import BytesIO
 from playwright.async_api import async_playwright
 from sqlmodel import select
+from app.core.currency import get_currency_symbol
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import Document, DocumentItem
 from app.models.document_template import DocumentTemplate
@@ -109,7 +110,7 @@ class PDFRenderer:
             "client": client,
             "items": document.items,
             "totals": totals,
-            "currency": currency or self.DEFAULT_CURRENCY,
+            "currency": get_currency_symbol(user.currency or "XOF"),
             # ✅ NOUVEAU : pour les factures (liaison au devis d'origine)
             "source_quote_number": source_quote_number,
         }
