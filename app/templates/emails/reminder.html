@@ -1,118 +1,298 @@
-<!-- templates/emails/reminder.html -->
+<!-- reminder.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rappel d'échéance</title>
+    <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+    <style>
+
+        /* Modern reset */
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f9;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+            color: #1c1c1e;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .email-wrapper {
+            width: 100%;
+            background-color: #f7f7f9;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+            border: 1px solid #f2f2f4;
+        }
+
+        /* Header */
+        .header {
+            padding: 32px 40px;
+            border-bottom: 1px solid #f2f2f4;
+            background-color: #ffffff;
+        }
+        
+        .company-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1c1c1e;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0;
+        }
+
+        /* Body Content */
+        .content {
+            padding: 40px;
+            background-color: #ffffff;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #1c1c1e;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            background-color: #f2f2f4;
+            padding: 6px 12px;
+            border-radius: 4px;
+        }
+
+        .greeting {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1c1c1e;
+            margin: 0 0 24px;
+            letter-spacing: -0.02em;
+        }
+
+        .text-body {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #48484a;
+            margin: 0 0 32px;
+        }
+
+        /* Message Box / Info Box */
+        .message-box {
+            background-color: #f9f9fb;
+            border-left: 4px solid #1c1c1e;
+            padding: 20px 24px;
+            margin: 0 0 32px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .message-box p {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #3a3a3c;
+            font-style: italic;
+        }
+
+        /* Document Card */
+        .document-card {
+            background: #ffffff;
+            border: 1px solid #e5e5ea;
+            border-radius: 12px;
+            padding: 0;
+            margin: 0 0 32px;
+            overflow: hidden;
+        }
+
+        .document-card table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .document-card td {
+            padding: 24px;
+        }
+
+        .document-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #8e8e93;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0 0 8px;
+        }
+
+        .document-value {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1c1c1e;
+            margin: 0;
+        }
+
+        .document-amount {
+            font-size: 36px;
+            font-weight: 700;
+            color: #1c1c1e;
+            margin: 0;
+            letter-spacing: -0.03em;
+        }
+
+        /* CTA */
+        .cta-container {
+            text-align: center;
+            margin: 40px 0 24px;
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: #1c1c1e;
+            color: #ffffff !important;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 16px 36px;
+            border-radius: 8px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Disclaimer */
+        .disclaimer {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #8e8e93;
+            background-color: #f9f9fb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 40px;
+            border: 1px solid #f2f2f4;
+        }
+
+        .disclaimer strong {
+            color: #48484a;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 32px 40px;
+            text-align: center;
+            background-color: #f9f9fb;
+            border-top: 1px solid #f2f2f4;
+        }
+
+        .footer p {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: #8e8e93;
+        }
+        
+        .footer strong {
+            color: #48484a;
+        }
+
+        .footer .branding {
+            font-size: 12px;
+            color: #aeaeb2;
+            margin-top: 16px;
+        }
+
+        @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 16px 8px; }
+            .content, .header, .footer { padding: 24px; }
+            .document-amount { font-size: 28px; }
+            .btn { padding: 16px 24px; display: block; }
+        }
+
+    </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: 'Inter', -apple-system, BlinkMacSystemFont, Arial, sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-            <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08);">
-                    
-                    <!-- Header gradient -->
-                    <tr>
-                        <td style="background: {% if days_left <= 1 %}linear-gradient(135deg, #ef4444, #dc2626){% else %}linear-gradient(135deg, #f59e0b, #d97706){% endif %}; padding: 32px 40px; text-align: center;">
-                            <div style="display: inline-block; background-color: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; margin-bottom: 16px;">
-                                <span style="color: white; font-size: 13px; font-weight: 700; letter-spacing: 1px;">
-                                    {% if days_left <= 1 %}⚠️ URGENT{% else %}⏰ RAPPEL{% endif %}
-                                </span>
-                            </div>
-                            <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
-                                Rappel d'échéance
-                            </h1>
-                            <p style="margin: 12px 0 0; color: rgba(255,255,255,0.9); font-size: 15px;">
-                                Facture <strong>{{ document_number }}</strong>
-                            </p>
-                        </td>
-                    </tr>
-                    
-                    <!-- Corps -->
-                    <tr>
-                        <td style="padding: 40px;">
-                            <p style="margin: 0 0 20px; color: #1f2937; font-size: 16px; line-height: 1.6;">
-                                Bonjour {{ to_name }},
-                            </p>
-                            
-                            <p style="margin: 0 0 24px; color: #4b5563; font-size: 15px; line-height: 1.7;">
-                                Sauf erreur de notre part, votre facture
-                                <strong style="color: #1f2937;">{{ document_number }}</strong>
-                                d'un montant de 
-                                <strong style="color: #1f2937;">{{ total_amount }}</strong>
-                                arrive à échéance 
-                                {% if days_left <= 1 %}
-                                    <strong style="color: #ef4444;">demain (le {{ due_date }})</strong>.
-                                {% else %}
-                                    dans <strong>{{ days_left }} jours</strong> (le {{ due_date }}).
-                                {% endif %}
-                            </p>
-                            
-                            <!-- Bloc échéance -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: {% if days_left <= 1 %}#fef2f2{% else %}#fffbeb{% endif %}; border-left: 4px solid {% if days_left <= 1 %}#ef4444{% else %}#f59e0b{% endif %}; border-radius: 8px; margin: 24px 0;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                            <tr>
-                                                <td style="font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                                                    Montant à régler
-                                                </td>
-                                                <td align="right" style="font-size: 22px; font-weight: 800; color: #1f2937;">
-                                                    {{ total_amount }}
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="font-size: 13px; color: #6b7280; padding-top: 8px;">
-                                                    Date d'échéance
-                                                </td>
-                                                <td align="right" style="font-size: 15px; font-weight: 600; color: {% if days_left <= 1 %}#dc2626{% else %}#1f2937{% endif %}; padding-top: 8px;">
-                                                    {{ due_date }}
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            {% if client_url %}
-                            <!-- Bouton d'accès à la facture -->
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 32px 0;">
-                                <tr>
-                                    <td align="center">
-                                        <a href="{{ client_url }}" style="display: inline-block; background: linear-gradient(135deg, #06b6d4, #8b5cf6); color: white; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(139,92,246,0.3);">
-                                            📄 Voir ma facture en ligne
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-                            {% endif %}
-                            
-                            <!-- Note courtoise -->
-                            <p style="margin: 24px 0 0; color: #6b7280; font-size: 13px; line-height: 1.6; font-style: italic; padding: 16px; background-color: #f9fafb; border-radius: 8px;">
-                                💡 Si votre paiement est déjà en route, merci de ne pas tenir compte de ce message.
-                            </p>
-                            
-                            <p style="margin: 32px 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                                Cordialement,<br>
-                                <strong style="color: #1f2937;">{{ user_company }}</strong>
-                            </p>
-                        </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
-                            <p style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
-                                Cet email a été envoyé automatiquement par <strong>{{ user_company }}</strong>.<br>
-                                En cas de question, contactez directement votre prestataire.
-                            </p>
-                        </td>
-                    </tr>
-                    
-                </table>
-            </td>
-        </tr>
-    </table>
+<body>
+    <div class="email-wrapper">
+        <div class="email-container">
+            <div class="header">
+                <p class="company-name">{{ user_company }}</p>
+            </div>
+            <div class="content">
+                <div class="eyebrow" style="color: #1c1c1e; background-color: #f2f2f4;">
+                    {% if days_left <= 1 %}Urgent{% else %}Rappel{% endif %}
+                </div>
+                <h1 class="greeting">Rappel d'échéance</h1>
+                
+                <p class="text-body">
+                    Bonjour <strong>{{ to_name }}</strong>,<br><br>
+                    Sauf erreur de notre part, votre facture arrive à échéance 
+                    {% if days_left <= 1 %}
+                        <strong>demain (le {{ due_date }})</strong>.
+                    {% else %}
+                        dans <strong>{{ days_left }} jours</strong> (le {{ due_date }}).
+                    {% endif %}
+                </p>
+
+                <div class="document-card">
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                        <tr>
+                            <td style="border-bottom: 1px solid #e5e5ea;">
+                                <p class="document-label">Numéro de facture</p>
+                                <p class="document-value">{{ document_number }}</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #fafafc; border-bottom: 1px solid #e5e5ea;">
+                                <p class="document-label">Montant à régler</p>
+                                <p class="document-amount">{{ total_amount }}</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #ffffff; padding: 16px 24px;">
+                                <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                                    <tr>
+                                        <td style="padding: 0; width: 28px; vertical-align: middle;">
+                                            <span style="font-size: 16px; filter: grayscale(100%);">📅</span>
+                                        </td>
+                                        <td style="padding: 0; vertical-align: middle;">
+                                            <p style="margin: 0; font-size: 14px; color: #48484a; font-weight: 500;">
+                                                Date limite : <strong>{{ due_date }}</strong>
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                {% if client_url %}
+                <div class="cta-container">
+                    <a href="{{ client_url }}" class="btn">Voir et régler la facture</a>
+                </div>
+                {% endif %}
+
+                <div class="disclaimer">
+                    Si votre paiement est déjà en route, merci de ne pas tenir compte de ce message.
+                </div>
+            </div>
+            <div class="footer">
+                <p>Envoyé automatiquement par <strong>{{ user_company }}</strong></p>
+                <p class="branding">En cas de question, contactez directement votre prestataire.</p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

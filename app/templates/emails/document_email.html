@@ -1,112 +1,302 @@
+<!-- document_email.html -->
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ subject }}</title>
+    <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+    <style>
+
+        /* Modern reset */
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f9;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+            color: #1c1c1e;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .email-wrapper {
+            width: 100%;
+            background-color: #f7f7f9;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+            border: 1px solid #f2f2f4;
+        }
+
+        /* Header */
+        .header {
+            padding: 32px 40px;
+            border-bottom: 1px solid #f2f2f4;
+            background-color: #ffffff;
+        }
+        
+        .company-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1c1c1e;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0;
+        }
+
+        /* Body Content */
+        .content {
+            padding: 40px;
+            background-color: #ffffff;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #1c1c1e;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            background-color: #f2f2f4;
+            padding: 6px 12px;
+            border-radius: 4px;
+        }
+
+        .greeting {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1c1c1e;
+            margin: 0 0 24px;
+            letter-spacing: -0.02em;
+        }
+
+        .text-body {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #48484a;
+            margin: 0 0 32px;
+        }
+
+        /* Message Box / Info Box */
+        .message-box {
+            background-color: #f9f9fb;
+            border-left: 4px solid #1c1c1e;
+            padding: 20px 24px;
+            margin: 0 0 32px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .message-box p {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #3a3a3c;
+            font-style: italic;
+        }
+
+        /* Document Card */
+        .document-card {
+            background: #ffffff;
+            border: 1px solid #e5e5ea;
+            border-radius: 12px;
+            padding: 0;
+            margin: 0 0 32px;
+            overflow: hidden;
+        }
+
+        .document-card table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .document-card td {
+            padding: 24px;
+        }
+
+        .document-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #8e8e93;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0 0 8px;
+        }
+
+        .document-value {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1c1c1e;
+            margin: 0;
+        }
+
+        .document-amount {
+            font-size: 36px;
+            font-weight: 700;
+            color: #1c1c1e;
+            margin: 0;
+            letter-spacing: -0.03em;
+        }
+
+        /* CTA */
+        .cta-container {
+            text-align: center;
+            margin: 40px 0 24px;
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: #1c1c1e;
+            color: #ffffff !important;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 16px 36px;
+            border-radius: 8px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Disclaimer */
+        .disclaimer {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #8e8e93;
+            background-color: #f9f9fb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 40px;
+            border: 1px solid #f2f2f4;
+        }
+
+        .disclaimer strong {
+            color: #48484a;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 32px 40px;
+            text-align: center;
+            background-color: #f9f9fb;
+            border-top: 1px solid #f2f2f4;
+        }
+
+        .footer p {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: #8e8e93;
+        }
+        
+        .footer strong {
+            color: #48484a;
+        }
+
+        .footer .branding {
+            font-size: 12px;
+            color: #aeaeb2;
+            margin-top: 16px;
+        }
+
+        @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 16px 8px; }
+            .content, .header, .footer { padding: 24px; }
+            .document-amount { font-size: 28px; }
+            .btn { padding: 16px 24px; display: block; }
+        }
+
+    </style>
 </head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-container">
+            <div class="header">
+                <p class="company-name">{{ company_name }}</p>
+            </div>
+            <div class="content">
+                <div class="eyebrow" style="color: #1c1c1e; background-color: #f2f2f4;">
+                    {% if is_reminder %}Rappel{% else %}Nouveau document{% endif %}
+                </div>
+                <h1 class="greeting">{{ doc_type }} N° {{ doc_number }}</h1>
+                
+                <p class="text-body">
+                    Bonjour <strong>{{ client_name }}</strong>,<br><br>
+                    {% if is_reminder %}
+                    Nous vous contactons concernant le {{ doc_type|lower }} que nous vous avons envoyé le {{ sent_date }}. Celui-ci est toujours en attente de votre réponse.
+                    {% else %}
+                    Veuillez trouver ci-joint notre {{ doc_type|lower }} pour consultation.
+                    {% endif %}
+                </p>
 
-<body style="margin: 0; padding: 0; background-color: #F3F4F6; font-family: 'Helvetica Neue', Arial, sans-serif;">
+                <div class="document-card">
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                        <tr>
+                            <td style="border-bottom: 1px solid #e5e5ea;">
+                                <p class="document-label">Numéro du document</p>
+                                <p class="document-value">{{ doc_number }}</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #fafafc; {% if due_date %}border-bottom: 1px solid #e5e5ea;{% endif %}">
+                                <p class="document-label">Montant total TTC</p>
+                                <p class="document-amount">{{ grand_total }}</p>
+                            </td>
+                        </tr>
+                        {% if due_date %}
+                        <tr>
+                            <td style="background-color: #ffffff; padding: 16px 24px;">
+                                <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                                    <tr>
+                                        <td style="padding: 0; width: 28px; vertical-align: middle;">
+                                            <span style="font-size: 16px; filter: grayscale(100%);">📅</span>
+                                        </td>
+                                        <td style="padding: 0; vertical-align: middle;">
+                                            <p style="margin: 0; font-size: 14px; color: #48484a; font-weight: 500;">
+                                                Date d'échéance : <strong>{{ due_date }}</strong>
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
 
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
-        style="background-color: #F3F4F6; padding: 40px 0;">
-        <tr>
-            <td align="center">
-                <table role="presentation" width="600" cellspacing="0" cellpadding="0"
-                    style="background-color: #FFFFFF; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-
-                    <!-- HEADER -->
-                    <tr>
-                        <td style="background-color: {{ primary_color }}; padding: 30px 40px;">
-                            <h1 style="margin: 0; color: #FFFFFF; font-size: 22px; font-weight: 700;">
-                                {{ company_name }}
-                            </h1>
-                            <p style="margin: 6px 0 0; color: rgba(255,255,255,0.8); font-size: 13px;">
-                                {{ doc_type }} N° {{ doc_number }}
-                            </p>
-                        </td>
-                    </tr>
-
-                    <!-- BODY -->
-                    <tr>
-                        <td style="padding: 30px 40px;">
-                            <p style="margin: 0 0 16px; font-size: 15px; color: #1F2937;">
-                                Bonjour {{ client_name }},
-                            </p>
-
-                            <p style="margin: 0 0 16px; font-size: 14px; color: #4B5563; line-height: 1.6;">
-                                {% if is_reminder %}
-                                Nous vous contactons concernant le {{ doc_type|lower }} <strong>{{ doc_number
-                                    }}</strong>
-                                que nous vous avons envoyé le {{ sent_date }}.
-                                Celui-ci est toujours en attente de votre réponse.
-                                {% else %}
-                                Veuillez trouver ci-joint notre {{ doc_type|lower }} <strong>{{ doc_number }}</strong>
-                                d'un montant de <strong>{{ grand_total }}</strong>.
-                                {% endif %}
-                            </p>
-
-                            {% if is_reminder %}
-                            <p style="margin: 0 0 20px; font-size: 14px; color: #4B5563; line-height: 1.6;">
-                                Nous vous invitons à consulter le document en cliquant sur le bouton ci-dessous.
-                            </p>
-                            {% endif %}
-
-                            <!-- CTA BUTTON -->
-                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 20px 0;">
-                                <tr>
-                                    <td style="background-color: {{ primary_color }}; border-radius: 8px;">
-                                        <a href="{{ document_link }}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #FFFFFF;
-                                                  text-decoration: none; font-size: 14px; font-weight: 600;">
-                                            {% if is_reminder %}
-                                            Voir le {{ doc_type|lower }}
-                                            {% else %}
-                                            Consulter le {{ doc_type|lower }}
-                                            {% endif %}
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <!-- AMOUNT BOX -->
-                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
-                                style="margin: 20px 0; background-color: #F9FAFB; border-radius: 8px; border: 1px solid #E5E7EB;">
-                                <tr>
-                                    <td style="padding: 16px 20px;">
-                                        <p
-                                            style="margin: 0; font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">
-                                            Montant total TTC</p>
-                                        <p
-                                            style="margin: 4px 0 0; font-size: 24px; font-weight: 700; color: {{ primary_color }};">
-                                            {{ grand_total }}</p>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <p style="margin: 0 0 8px; font-size: 13px; color: #6B7280;">
-                                {% if due_date %}Date d'echeance : <strong>{{ due_date }}</strong>{% endif %}
-                            </p>
-                        </td>
-                    </tr>
-
-                    <!-- FOOTER -->
-                    <tr>
-                        <td style="padding: 20px 40px; background-color: #F9FAFB; border-top: 1px solid #E5E7EB;">
-                            <p style="margin: 0 0 6px; font-size: 11px; color: #9CA3AF;">
-                                Cet email a ete envoye par {{ company_name }} via Sharaco.
-                            </p>
-                            <p style="margin: 0; font-size: 11px; color: #9CA3AF;">
-                                {% if company_address %}{{ company_address }}{% endif %}
-                            </p>
-                        </td>
-                    </tr>
-
-                </table>
-            </td>
-        </tr>
-    </table>
-
+                <div class="cta-container">
+                    <a href="{{ document_link }}" target="_blank" class="btn">
+                        {% if is_reminder %}
+                        Voir le {{ doc_type|lower }}
+                        {% else %}
+                        Consulter le {{ doc_type|lower }}
+                        {% endif %}
+                    </a>
+                </div>
+            </div>
+            <div class="footer">
+                <p>Cet email a été envoyé par <strong>{{ company_name }}</strong></p>
+                {% if company_address %}
+                <p style="margin-top: 8px;">{{ company_address }}</p>
+                {% endif %}
+                <p class="branding">Via <strong>Sharaco</strong></p>
+            </div>
+        </div>
+    </div>
 </body>
-
 </html>
