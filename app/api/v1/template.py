@@ -84,7 +84,7 @@ async def get_layout_preview_png(
             content=png_bytes,
             media_type="image/png",
             headers={
-                "Cache-Control": "public, max-age=86400",  # 24h
+                 "Cache-Control": "public, max-age=31536000, immutable",  # 24h
                 "Content-Disposition": f'inline; filename="preview-{layout_id}.png"'
             }
         )
