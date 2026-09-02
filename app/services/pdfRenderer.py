@@ -30,6 +30,9 @@ class PDFRenderer:
         "minimal": "minimal.html",
         "bold": "bold.html",
         "elegant": "elegant.html",
+        "premium": "premium.html",
+        "bento": "bento.html",
+        "studio": "studio.html",
     }
 
     # ✅ Template unique pour les factures (design épuré & légal)

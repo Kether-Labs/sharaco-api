@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document.type.value or 'DEVIS' }} - {{ document.number or 'N/A' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: {{ template.primary_color or '#e11d48' }};
+            --text-main: #18181b;
+            --text-muted: #71717a;
+            --border: #e4e4e7;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 10pt;
+            line-height: 1.5;
+            color: var(--text-main);
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 25mm 20mm;
+            position: relative;
+        }
+
+        /* HEADER */
+        .doc-type-large {
+            font-family: 'Playfair Display', serif;
+            font-size: 48pt;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1;
+            margin-bottom: 2mm;
+            text-transform: uppercase;
+        }
+        
+        .accent-bar {
+            width: 60px;
+            height: 4px;
+            background: var(--primary);
+            margin-bottom: 15mm;
+        }
+
+        .grid-2 {
+            display: table;
+            width: 100%;
+            margin-bottom: 15mm;
+        }
+        .col-half {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+        }
+        
+        .label {
+            font-size: 8pt; font-weight: 600; text-transform: uppercase;
+            color: var(--primary); margin-bottom: 4px; letter-spacing: 0.1em;
+        }
+        
+        .info-text { font-size: 10pt; color: var(--text-main); }
+        .info-title { font-weight: 600; font-size: 11pt; margin-bottom: 2px; }
+
+        /* TABLE */
+        .studio-table {
+            width: 100%; border-collapse: collapse; margin-bottom: 15mm;
+        }
+        .studio-table th {
+            text-align: left; font-size: 8pt; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            color: var(--text-muted); border-bottom: 2px solid var(--text-main);
+            padding: 12px 0;
+        }
+        .studio-table td {
+            padding: 16px 0; border-bottom: 1px solid var(--border);
+            font-size: 10pt; vertical-align: top;
+        }
+        
+        .text-right { text-align: right !important; }
+        
+        /* TOTALS */
+        .totals-box {
+            background: #f4f4f5;
+            padding: 10mm;
+            margin-left: auto;
+            width: 60%;
+        }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 4px 0; }
+        .grand-total { 
+            border-top: 2px solid var(--text-main);
+            margin-top: 6px; padding-top: 6px;
+        }
+        .grand-total-val {
+            font-family: 'Playfair Display', serif;
+            font-size: 24pt;
+            color: var(--primary);
+        }
+
+        .footer {
+            margin-top: 20mm;
+            font-size: 8.5pt; color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            padding-top: 8mm;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    
+    <div class="doc-type-large">{{ document.type.value or 'DEVIS' }}</div>
+    <div style="font-size: 12pt; color: var(--text-muted); margin-bottom: 6mm;">N° {{ document.number or 'N/A' }} — Le {{ document.created_at.strftime('%d/%m/%Y') if document.created_at else '-' }}</div>
+    <div class="accent-bar"></div>
+
+    <div class="grid-2">
+        <div class="col-half" style="padding-right: 10mm;">
+            <div class="label">Émetteur</div>
+            <div class="info-title">{{ user.company_name or user.email }}</div>
+            <div class="info-text">
+                {% if user.address %}{{ user.address | replace('\n', '<br>') }}<br>{% endif %}
+                {{ user.email }}
+            </div>
+        </div>
+        <div class="col-half">
+            <div class="label">Client</div>
+            <div class="info-title">{{ client.name }}</div>
+            <div class="info-text">
+                {% if client.address %}{{ client.address | replace('\n', '<br>') }}<br>{% endif %}
+                {{ client.email }}
+            </div>
+        </div>
+    </div>
+
+    <table class="studio-table">
+        <thead>
+            <tr>
+                <th style="width: 50%;">Description</th>
+                <th class="text-right" style="width: 10%;">Qté</th>
+                <th class="text-right" style="width: 15%;">Prix Unitaire</th>
+                <th class="text-right" style="width: 25%;">Montant HT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td><strong>{{ item.description }}</strong></td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right">{{ (item.unit_price_cents / 100) | round(2) }}</td>
+                <td class="text-right">{{ ((item.quantity * item.unit_price_cents) / 100) | round(2) }} {{ currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals-box">
+        <table class="totals-table">
+            <tr>
+                <td>Sous-total HT</td>
+                <td class="text-right">{{ (totals.subtotal_cents / 100) | round(2) }} {{ currency }}</td>
+            </tr>
+            <tr>
+                <td>TVA</td>
+                <td class="text-right">{{ (totals.tax_total_cents / 100) | round(2) }} {{ currency }}</td>
+            </tr>
+        </table>
+        <div class="grand-total">
+            <table style="width: 100%;">
+                <tr>
+                    <td style="font-weight: 600; font-size: 11pt;">Total TTC</td>
+                    <td class="text-right grand-total-val">{{ (totals.grand_total_cents / 100) | round(2) }} {{ currency }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        {% if template.footer_text %}
+        <div style="margin-bottom: 4mm; color: var(--text-main);">{{ template.footer_text | replace('\n', '<br>') }}</div>
+        {% endif %}
+        {% if template.show_bank_details and user.payment_info %}
+        <strong>RIB :</strong> {{ user.payment_info | replace('\n', ' • ') }}<br>
+        {% endif %}
+        {% if template.show_tax_id and user.tax_id %}
+        <strong>Identifiant Fiscal :</strong> {{ user.tax_id }}
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>

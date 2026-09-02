@@ -58,6 +58,24 @@ async def get_available_layouts(
             "description": "Style raffiné et sophistiqué, parfait pour les clients exigeants",
             "preview_url": "/api/v1/templates/layouts/elegant/preview",
         },
+        {
+            "id": "premium",
+            "name": "Premium",
+            "description": "Style ultra-minimaliste inspiré des interfaces SaaS haut de gamme",
+            "preview_url": "/api/v1/templates/layouts/premium/preview",
+        },
+        {
+            "id": "bento",
+            "name": "Bento",
+            "description": "Design moderne et structuré sous forme de cartes arrondies",
+            "preview_url": "/api/v1/templates/layouts/bento/preview",
+        },
+        {
+            "id": "studio",
+            "name": "Studio",
+            "description": "Style agence créative avec typographie audacieuse et asymétrique",
+            "preview_url": "/api/v1/templates/layouts/studio/preview",
+        },
     ]
 
 
@@ -68,7 +86,7 @@ async def get_layout_preview_png(
 ):
     """Génère une image PNG de preview d'un layout (PUBLIC)."""
     
-    valid_layouts = ["modern", "classic", "minimal","bold", "elegant"]
+    valid_layouts = ["modern", "classic", "minimal", "bold", "elegant", "premium", "bento", "studio"]
     if layout_id not in valid_layouts:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -102,7 +120,7 @@ async def preview_layout(
     current_user: User = Depends(get_current_user),
 ):
     """Aperçu HTML d'un layout avec les couleurs par défaut (sans template en DB)."""
-    if layout_id not in pdf_renderer.LAYOUT_MAP:
+    if layout_id not in pdf_renderer.QUOTE_LAYOUT_MAP:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Layout '{layout_id}' introuvable",

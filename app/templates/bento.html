@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document.type.value or 'DEVIS' }} - {{ document.number or 'N/A' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: {{ template.primary_color or '#3b82f6' }};
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            font-size: 10pt;
+            line-height: 1.5;
+            color: var(--text-main);
+            background: var(--bg-body);
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: var(--bg-body);
+            padding: 15mm;
+            position: relative;
+        }
+
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { padding: 0; }
+            .page { margin: 0; padding: 15mm; }
+        }
+
+        /* GRID SYSTEM */
+        .bento-grid {
+            display: table;
+            width: 100%;
+            border-spacing: 4mm;
+            margin: -4mm;
+            margin-bottom: 4mm;
+        }
+        .bento-row { display: table-row; }
+        .bento-cell { 
+            display: table-cell; 
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 6mm;
+            vertical-align: top;
+        }
+
+        /* CARDS */
+        .card-header {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .logo-placeholder { font-size: 14pt; font-weight: 700; color: white; }
+        .doc-type { font-size: 8pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
+        .doc-number { font-size: 20pt; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+        
+        .label { font-size: 8pt; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: 0.05em; }
+        .value-title { font-size: 11pt; font-weight: 600; color: var(--text-main); margin-bottom: 2px; }
+        .value-text { font-size: 9.5pt; color: var(--text-muted); }
+
+        /* ITEMS */
+        .items-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 8mm;
+            overflow: hidden;
+        }
+        .items-table { width: 100%; border-collapse: collapse; }
+        .items-table th {
+            background: #f1f5f9;
+            text-align: left; font-size: 8pt; font-weight: 600;
+            text-transform: uppercase; color: var(--text-muted);
+            padding: 10px 15px; border-bottom: 1px solid var(--border);
+        }
+        .items-table td {
+            padding: 12px 15px; border-bottom: 1px solid var(--border);
+            font-size: 9.5pt;
+        }
+        .items-table tr:last-child td { border-bottom: none; }
+        .text-right { text-align: right !important; }
+
+        /* ═══════════════════════════════════════════════════════════
+           SCHEDULE PAYMENT (NOUVEAU)
+        ═══════════════════════════════════════════════════════════ */
+        .schedule-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 8mm;
+            overflow: hidden;
+        }
+        .schedule-header {
+            background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary), #000 15%));
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .schedule-header-title {
+            font-size: 9pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .schedule-header-badge {
+            margin-left: auto;
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 8pt;
+            font-weight: 600;
+        }
+        .schedule-table { width: 100%; border-collapse: collapse; }
+        .schedule-table th {
+            background: #f1f5f9;
+            text-align: left;
+            font-size: 8pt;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 8px 15px;
+            border-bottom: 1px solid var(--border);
+        }
+        .schedule-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border);
+            font-size: 9.5pt;
+            vertical-align: middle;
+        }
+        .schedule-table tr:last-child td { border-bottom: none; }
+        .schedule-step {
+            display: inline-block;
+            width: 22px;
+            height: 22px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 22px;
+            font-size: 9pt;
+            font-weight: 700;
+        }
+        .schedule-title {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .schedule-desc {
+            font-size: 8.5pt;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .schedule-percent {
+            display: inline-block;
+            background: color-mix(in srgb, var(--primary), #fff 85%);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 8.5pt;
+            font-weight: 700;
+        }
+
+        /* TOTALS */
+        .totals-card {
+            background: var(--primary);
+            color: white;
+            border-radius: var(--radius);
+            padding: 6mm;
+        }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 4px 0; font-size: 10pt; }
+        .totals-table tr:last-child td { padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 10px; }
+        .grand-total-val { font-size: 16pt; font-weight: 700; }
+
+        .footer {
+            font-size: 8pt; color: var(--text-muted); text-align: center;
+            margin-top: 10mm;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    
+    <div class="bento-grid">
+        <div class="bento-row">
+            <div class="bento-cell card-header" style="width: 50%;">
+                {% if template.logo_url %}
+                    <img src="{{ template.logo_url }}" style="max-height: 40px; filter: brightness(0) invert(1);" alt="Logo">
+                {% else %}
+                    <div class="logo-placeholder">{{ template.header_text or user.company_name or user.email.split('@')[0] | upper }}</div>
+                {% endif %}
+            </div>
+            <div class="bento-cell" style="width: 50%; text-align: right;">
+                <div class="doc-type">{{ document.type.value or 'DEVIS' }}</div>
+                <div class="doc-number">#{{ document.number or 'N/A' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bento-grid">
+        <div class="bento-row">
+            <div class="bento-cell" style="width: 33.33%;">
+                <div class="label">Émetteur</div>
+                <div class="value-title">{{ user.company_name or user.email }}</div>
+                <div class="value-text">
+                    {% if user.address %}{{ user.address | replace('\n', '<br>') }}<br>{% endif %}
+                    {{ user.email }}
+                </div>
+            </div>
+            <div class="bento-cell" style="width: 33.33%;">
+                <div class="label">Destinataire</div>
+                <div class="value-title">{{ client.name }}</div>
+                <div class="value-text">
+                    {% if client.address %}{{ client.address | replace('\n', '<br>') }}<br>{% endif %}
+                    {{ client.email }}
+                </div>
+            </div>
+            <div class="bento-cell" style="width: 33.33%;">
+                <div class="label">Dates</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td class="value-text" style="padding-bottom: 4px;">Émission</td>
+                        <td class="value-title" style="text-align: right; font-size: 9.5pt;">{{ document.created_at.strftime('%d/%m/%Y') if document.created_at else '-' }}</td>
+                    </tr>
+                    {% if document.due_date %}
+                    <tr>
+                        <td class="value-text">Échéance</td>
+                        <td class="value-title" style="text-align: right; font-size: 9.5pt;">{{ document.due_date.strftime('%d/%m/%Y') }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="items-card">
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%;">Description</th>
+                    <th class="text-right" style="width: 10%;">Qté</th>
+                    <th class="text-right" style="width: 15%;">Prix U.</th>
+                    <th class="text-right" style="width: 10%;">TVA</th>
+                    <th class="text-right" style="width: 20%;">Total HT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td><strong>{{ item.description }}</strong></td>
+                    <td class="text-right">{{ item.quantity }}</td>
+                    <td class="text-right">{{ (item.unit_price_cents / 100) | round(2) }} {{ currency }}</td>
+                    <td class="text-right">{{ item.tax_rate }}%</td>
+                    <td class="text-right">{{ ((item.quantity * item.unit_price_cents) / 100) | round(2) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════
+       SCHEDULE PAYMENT (affiché uniquement si échéancier valide)
+       Condition : existe + > 0 milestones + pas juste "100% seul"
+    ═══════════════════════════════════════════════════════════ #}
+    {% if payment_schedule and payment_schedule|length > 0 and not (payment_schedule|length == 1 and payment_schedule[0].percent == 100) %}
+    <div class="schedule-card">
+        <div class="schedule-header">
+            <span class="schedule-header-title">💳 Échéancier de paiement</span>
+            <span class="schedule-header-badge">{{ payment_schedule|length }} tranche{{ 's' if payment_schedule|length > 1 else '' }}</span>
+        </div>
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th style="width: 8%;">#</th>
+                    <th style="width: 42%;">Étape</th>
+                    <th style="width: 20%;">Date prévue</th>
+                    <th class="text-right" style="width: 12%;">Part</th>
+                    <th class="text-right" style="width: 18%;">Montant TTC</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ms in payment_schedule %}
+                {% set ms_amount = (totals.grand_total_cents * ms.percent / 100) | round(0) | int %}
+                <tr>
+                    <td>
+                        <span class="schedule-step">{{ ms.sequence or loop.index }}</span>
+                    </td>
+                    <td>
+                        <div class="schedule-title">{{ ms.title or ('Échéance ' ~ loop.index) }}</div>
+                        {% if ms.description %}
+                        <div class="schedule-desc">{{ ms.description }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ms.trigger_date %}
+                            {{ ms.trigger_date.strftime('%d/%m/%Y') if ms.trigger_date.strftime else ms.trigger_date }}
+                        {% else %}
+                            <span style="color: var(--text-muted); font-style: italic;">À convenir</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        <span class="schedule-percent">{{ ms.percent }}%</span>
+                    </td>
+                    <td class="text-right" style="font-weight: 700;">
+                        {{ (ms_amount / 100) | round(2) }} {{ currency }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="bento-grid">
+        <div class="bento-row">
+            <div class="bento-cell" style="width: 60%; background: transparent; border: none; padding: 0 6mm 0 0;">
+                {% if template.footer_text %}
+                <div class="bento-cell" style="width: 100%;">
+                    <div class="label">Informations complémentaires</div>
+                    <div class="value-text">{{ template.footer_text | replace('\n', '<br>') }}</div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="bento-cell totals-card" style="width: 40%;">
+                <table class="totals-table">
+                    <tr>
+                        <td style="opacity: 0.8;">Total HT</td>
+                        <td class="text-right">{{ (totals.subtotal_cents / 100) | round(2) }} {{ currency }}</td>
+                    </tr>
+                    <tr>
+                        <td style="opacity: 0.8;">Total TVA</td>
+                        <td class="text-right">{{ (totals.tax_total_cents / 100) | round(2) }} {{ currency }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Total TTC</td>
+                        <td class="text-right grand-total-val">{{ (totals.grand_total_cents / 100) | round(2) }} {{ currency }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        {% if template.show_bank_details and user.payment_info %}
+        {{ user.payment_info | replace('\n', ' • ') }}<br>
+        {% endif %}
+        {% if template.show_tax_id and user.tax_id %}
+        N° SIRET/TVA: {{ user.tax_id }}<br>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>

@@ -30,7 +30,7 @@ class DocumentTemplateCreate(BaseModel):
     @field_validator("layout_style")
     @classmethod
     def layout_style_valid(cls, v: str) -> str:
-        allowed = {"classic", "modern", "minimal"}
+        allowed = {"classic", "modern", "minimal", "bold", "elegant", "premium", "bento", "studio"}
         if v not in allowed:
             raise ValueError(f"Layout '{v}' invalide. Choix possibles : {', '.join(allowed)}")
         return v

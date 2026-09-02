@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document.type.value or 'DEVIS' }} - {{ document.number or 'N/A' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: {{ template.primary_color or '#000000' }};
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --bg: #ffffff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 10pt;
+            line-height: 1.5;
+            color: var(--text-main);
+            background: #f9fafb;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: var(--bg);
+            padding: 20mm;
+            position: relative;
+        }
+
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { background: white; padding: 0; }
+            .page { margin: 0; padding: 20mm; }
+        }
+
+        /* HEADER */
+        .header {
+            display: table;
+            width: 100%;
+            margin-bottom: 20mm;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10mm;
+        }
+        .header-cell { display: table-cell; vertical-align: top; }
+        .header-right { text-align: right; }
+
+        .logo-img { max-height: 40px; max-width: 150px; }
+        .logo-placeholder { 
+            font-size: 14pt; font-weight: 700; letter-spacing: -0.02em; 
+            color: var(--text-main); text-transform: uppercase;
+        }
+
+        .doc-type {
+            font-size: 9pt; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.1em; color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .doc-number {
+            font-size: 24pt; font-weight: 600; letter-spacing: -0.03em;
+            color: var(--text-main); line-height: 1;
+        }
+
+        /* METADATA */
+        .metadata-row {
+            display: table; width: 100%; margin-bottom: 15mm;
+        }
+        .metadata-cell { display: table-cell; width: 50%; vertical-align: top; }
+        
+        .address-block { margin-bottom: 10mm; }
+        .address-label {
+            font-size: 8pt; font-weight: 600; text-transform: uppercase;
+            color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.05em;
+        }
+        .address-name { font-size: 10pt; font-weight: 600; margin-bottom: 2px; }
+        .address-text { font-size: 9.5pt; color: var(--text-muted); line-height: 1.6; }
+
+        .date-table { width: 100%; border-collapse: collapse; }
+        .date-table td { padding: 4px 0; border-bottom: 1px dotted var(--border); }
+        .date-label { font-size: 9pt; color: var(--text-muted); }
+        .date-val { font-size: 9pt; font-weight: 500; text-align: right; }
+
+        /* ITEMS TABLE */
+        .items-table {
+            width: 100%; border-collapse: collapse; margin-bottom: 15mm;
+        }
+        .items-table th {
+            text-align: left; font-size: 8pt; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            color: var(--text-muted); border-bottom: 1px solid var(--border);
+            padding: 12px 8px;
+        }
+        .items-table td {
+            padding: 16px 8px; border-bottom: 1px solid var(--border);
+            font-size: 9.5pt; vertical-align: top;
+        }
+        
+        .text-right { text-align: right !important; }
+        .col-desc { width: 45%; }
+        .col-qty { width: 10%; }
+        .col-price { width: 15%; }
+        .col-tax { width: 10%; }
+        .col-total { width: 20%; font-weight: 500; }
+
+        .item-title { font-weight: 600; color: var(--text-main); margin-bottom: 4px; }
+        .item-desc { font-size: 8.5pt; color: var(--text-muted); }
+
+        /* TOTALS */
+        .totals-wrapper {
+            display: table; width: 100%; margin-bottom: 20mm;
+        }
+        .totals-left { display: table-cell; width: 50%; padding-right: 20mm; vertical-align: bottom;}
+        .totals-right { display: table-cell; width: 50%; vertical-align: bottom; }
+
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .totals-table tr:last-child td { border-bottom: none; }
+        
+        .total-label { font-size: 9.5pt; color: var(--text-muted); }
+        .total-val { font-size: 9.5pt; font-weight: 500; text-align: right; }
+        
+        .grand-total td { padding-top: 12px; }
+        .grand-total .total-label { font-size: 11pt; font-weight: 600; color: var(--text-main); }
+        .grand-total .total-val { font-size: 14pt; font-weight: 700; color: var(--primary); }
+
+        /* NOTES & FOOTER */
+        .notes-block {
+            font-size: 8.5pt; color: var(--text-muted); line-height: 1.6;
+        }
+        .footer {
+            position: absolute; bottom: 20mm; left: 20mm; right: 20mm;
+            border-top: 1px solid var(--border); padding-top: 10mm;
+            font-size: 8pt; color: var(--text-muted); text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="header">
+        <div class="header-cell">
+            {% if template.logo_url %}
+                <img src="{{ template.logo_url }}" class="logo-img" alt="Logo">
+            {% else %}
+                <div class="logo-placeholder">
+                    {{ template.header_text or user.company_name or user.email.split('@')[0] | upper }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="header-cell header-right">
+            <div class="doc-type">{{ document.type.value or 'DEVIS' }}</div>
+            <div class="doc-number">#{{ document.number or 'N/A' }}</div>
+        </div>
+    </div>
+
+    <div class="metadata-row">
+        <div class="metadata-cell">
+            <div class="address-block">
+                <div class="address-label">De</div>
+                <div class="address-name">{{ user.company_name or user.email }}</div>
+                <div class="address-text">
+                    {% if user.address %}{{ user.address | replace('\n', '<br>') }}<br>{% endif %}
+                    {% if user.phone %}{{ user.phone }}<br>{% endif %}
+                    {{ user.email }}
+                </div>
+            </div>
+        </div>
+        <div class="metadata-cell">
+            <div class="address-block" style="padding-left: 20mm;">
+                <div class="address-label">À l'attention de</div>
+                <div class="address-name">{{ client.name }}</div>
+                <div class="address-text">
+                    {% if client.address %}{{ client.address | replace('\n', '<br>') }}<br>{% endif %}
+                    {{ client.email }}
+                </div>
+                
+                <table class="date-table" style="margin-top: 6mm;">
+                    <tr>
+                        <td class="date-label">Date d'émission</td>
+                        <td class="date-val">{{ document.created_at.strftime('%d/%m/%Y') if document.created_at else '-' }}</td>
+                    </tr>
+                    {% if document.due_date %}
+                    <tr>
+                        <td class="date-label">Échéance</td>
+                        <td class="date-val">{{ document.due_date.strftime('%d/%m/%Y') }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th class="col-desc">Description</th>
+                <th class="col-qty text-right">Qté</th>
+                <th class="col-price text-right">Prix U.</th>
+                <th class="col-tax text-right">TVA</th>
+                <th class="col-total text-right">Total HT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>
+                    <div class="item-title">{{ item.description }}</div>
+                </td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right">{{ (item.unit_price_cents / 100) | round(2) }} {{ currency }}</td>
+                <td class="text-right">{{ item.tax_rate }}%</td>
+                <td class="text-right">{{ ((item.quantity * item.unit_price_cents) / 100) | round(2) }} {{ currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals-wrapper">
+        <div class="totals-left">
+            {% if template.footer_text %}
+            <div class="notes-block">
+                <div class="address-label" style="color: var(--text-main);">Notes & Conditions</div>
+                {{ template.footer_text | replace('\n', '<br>') }}
+            </div>
+            {% endif %}
+        </div>
+        <div class="totals-right">
+            <table class="totals-table">
+                <tr>
+                    <td class="total-label">Total HT</td>
+                    <td class="total-val">{{ (totals.subtotal_cents / 100) | round(2) }} {{ currency }}</td>
+                </tr>
+                <tr>
+                    <td class="total-label">TVA</td>
+                    <td class="total-val">{{ (totals.tax_total_cents / 100) | round(2) }} {{ currency }}</td>
+                </tr>
+                <tr class="grand-total">
+                    <td class="total-label">Total TTC</td>
+                    <td class="total-val">{{ (totals.grand_total_cents / 100) | round(2) }} {{ currency }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        {% if template.show_bank_details and user.payment_info %}
+        <strong>Coordonnées bancaires:</strong> {{ user.payment_info | replace('\n', ' • ') }}<br>
+        {% endif %}
+        {% if template.show_tax_id and user.tax_id %}
+        <strong>N° SIRET/TVA:</strong> {{ user.tax_id }}<br>
+        {% endif %}
+        Généré par {{ user.company_name or 'Sharaco' }}
+    </div>
+</div>
+</body>
+</html>
