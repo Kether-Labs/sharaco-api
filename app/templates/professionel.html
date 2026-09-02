@@ -556,9 +556,9 @@
                     <tr>
                         <td>{{ item.description }}</td>
                         <td class="col-qty">{{ item.quantity }}</td>
-                        <td class="col-price">{{ "%.2f"|format(item.unit_price_cents / 100) }} {{ currency }}</td>
+                        <td class="col-price">{{ "{:,}".format(item.unit_price_cents) }} {{ currency }}</td>
                         <td class="col-tva">{{ item.tax_rate }}%</td>
-                        <td class="col-total">{{ "%.2f"|format(item.quantity * item.unit_price_cents / 100) }} {{
+                        <td class="col-total">{{ "{:,}".format((item.quantity or 1) * (item.unit_price_cents or 0)) }} {{
                             currency }}</td>
                     </tr>
                     {% endfor %}
@@ -571,17 +571,17 @@
             <div class="totals-box">
                 <div class="total-row">
                     <span style="color: var(--zinc-500); font-weight: 600;">Sous-total HT</span>
-                    <span style="font-weight: 700;">{{ "%.2f"|format(totals.subtotal_cents / 100) }} {{ currency
+                    <span style="font-weight: 700;">{{ "{:,}".format(totals.subtotal_cents) }} {{ currency
                         }}</span>
                 </div>
                 <div class="total-row">
                     <span style="color: var(--zinc-500); font-weight: 600;">TVA Totale</span>
-                    <span style="font-weight: 700;">{{ "%.2f"|format(totals.tax_total_cents / 100) }} {{ currency
+                    <span style="font-weight: 700;">{{ "{:,}".format(totals.tax_total_cents) }} {{ currency
                         }}</span>
                 </div>
                 <div class="total-row grand-total">
                     <span>TOTAL TTC</span>
-                    <span>{{ "%.2f"|format(totals.grand_total_cents / 100) }} {{ currency }}</span>
+                    <span>{{ "{:,}".format(totals.grand_total_cents) }} {{ currency }}</span>
                 </div>
             </div>
         </section>
@@ -625,7 +625,7 @@
                             <span class="schedule-percent">{{ milestone.percent }}%</span>
                         </td>
                         <td style="text-align: right;">
-                            <span class="schedule-amount">{{ "%.2f"|format(milestone.amount_cents / 100) }} {{ currency
+                            <span class="schedule-amount">{{ "{:,}".format(milestone.amount_cents) }} {{ currency
                                 }}</span>
                         </td>
                         <td style="text-align: right;">

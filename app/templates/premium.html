@@ -130,6 +130,109 @@
         .grand-total .total-label { font-size: 11pt; font-weight: 600; color: var(--text-main); }
         .grand-total .total-val { font-size: 14pt; font-weight: 700; color: var(--primary); }
 
+        /* SCHEDULE PAYMENT */
+        .schedule-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20mm;
+        }
+        .schedule-header {
+            background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary), #000 15%));
+            color: #ffffff;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .schedule-header-title {
+            font-size: 8.5pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .schedule-header-badge {
+            background: rgba(255,255,255,0.14);
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 8pt;
+            font-weight: 600;
+        }
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .schedule-table th {
+            background: #f9fafb;
+            text-align: left;
+            font-size: 8pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .schedule-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 9.5pt;
+            vertical-align: middle;
+        }
+        .schedule-table tr:last-child td { border-bottom: none; }
+        .schedule-step {
+            display: inline-block;
+            width: 22px;
+            height: 22px;
+            background: var(--primary);
+            color: #ffffff;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 22px;
+            font-size: 8.5pt;
+            font-weight: 700;
+        }
+        .schedule-title {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .schedule-desc {
+            color: var(--text-muted);
+            font-size: 8.5pt;
+            margin-top: 2px;
+        }
+        .schedule-percent {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #f3f4f6;
+            color: var(--text-main);
+            font-size: 8.5pt;
+            font-weight: 700;
+        }
+        .schedule-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f9fafb;
+            border-top: 1px solid var(--border);
+            padding: 12px 14px;
+            font-size: 9pt;
+            color: var(--text-main);
+        }
+        .schedule-summary-label {
+            font-size: 8pt;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+        .schedule-summary-value {
+            font-weight: 700;
+        }
+
         /* NOTES & FOOTER */
         .notes-block {
             font-size: 8.5pt; color: var(--text-muted); line-height: 1.6;
@@ -213,9 +316,9 @@
                     <div class="item-title">{{ item.description }}</div>
                 </td>
                 <td class="text-right">{{ item.quantity }}</td>
-                <td class="text-right">{{ (item.unit_price_cents / 100) | round(2) }} {{ currency }}</td>
+                <td class="text-right">{{ "{:,}".format(item.unit_price_cents) }} {{ currency }}</td>
                 <td class="text-right">{{ item.tax_rate }}%</td>
-                <td class="text-right">{{ ((item.quantity * item.unit_price_cents) / 100) | round(2) }} {{ currency }}</td>
+                <td class="text-right">{{ "{:,}".format((item.quantity * item.unit_price_cents)) }} {{ currency }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -234,19 +337,72 @@
             <table class="totals-table">
                 <tr>
                     <td class="total-label">Total HT</td>
-                    <td class="total-val">{{ (totals.subtotal_cents / 100) | round(2) }} {{ currency }}</td>
+                    <td class="total-val">{{ "{:,}".format(totals.subtotal_cents) }} {{ currency }}</td>
                 </tr>
                 <tr>
                     <td class="total-label">TVA</td>
-                    <td class="total-val">{{ (totals.tax_total_cents / 100) | round(2) }} {{ currency }}</td>
+                    <td class="total-val">{{ "{:,}".format(totals.tax_total_cents) }} {{ currency }}</td>
                 </tr>
                 <tr class="grand-total">
                     <td class="total-label">Total TTC</td>
-                    <td class="total-val">{{ (totals.grand_total_cents / 100) | round(2) }} {{ currency }}</td>
+                    <td class="total-val">{{ "{:,}".format(totals.grand_total_cents) }} {{ currency }}</td>
                 </tr>
             </table>
         </div>
     </div>
+
+    {% if document.payment_schedule and document.payment_schedule|length > 0 and not (document.payment_schedule|length == 1 and document.payment_schedule[0].percent == 100) %}
+    <div class="schedule-card">
+        <div class="schedule-header">
+            <span class="schedule-header-title">Échéancier de paiement</span>
+            <span class="schedule-header-badge">{{ document.payment_schedule|length }} tranche{{ 's' if document.payment_schedule|length > 1 else '' }}</span>
+        </div>
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th style="width: 8%;">#</th>
+                    <th style="width: 42%;">Étape</th>
+                    <th style="width: 20%;">Date prévue</th>
+                    <th style="width: 12%; text-align: right;">Part</th>
+                    <th style="width: 18%; text-align: right;">Montant TTC</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ms in document.payment_schedule | sort(attribute='sequence') %}
+                {% set ms_amount = ms.amount_cents if ms.amount_cents else (totals.grand_total_cents * ms.percent / 100) | round(0) | int %}
+                <tr>
+                    <td><span class="schedule-step">{{ ms.sequence or loop.index }}</span></td>
+                    <td>
+                        <div class="schedule-title">{{ ms.title or ('Échéance ' ~ loop.index) }}</div>
+                        {% if ms.description %}
+                        <div class="schedule-desc">{{ ms.description }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ms.trigger_date %}
+                            {% if ms.trigger_date.strftime %}
+                                {{ ms.trigger_date.strftime('%d/%m/%Y') }}
+                            {% else %}
+                                {{ ms.trigger_date }}
+                            {% endif %}
+                        {% else %}
+                            <span style="color: var(--text-muted); font-style: italic;">À convenir</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;"><span class="schedule-percent">{{ ms.percent }}%</span></td>
+                    <td style="text-align: right; font-weight: 700;">{{ "{:,}".format(ms_amount) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% set total_percent = document.payment_schedule | sum(attribute='percent') %}
+        {% set total_amount = document.payment_schedule | sum(attribute='amount_cents') %}
+        <div class="schedule-summary">
+            <span class="schedule-summary-label">Total échéancier</span>
+            <span class="schedule-summary-value">{{ "{:,}".format(total_amount) }} {{ currency }} <span style="font-size: 8.5pt; font-weight: 600; color: var(--text-muted); margin-left: 6px;">({{ total_percent }}%)</span></span>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="footer">
         {% if template.show_bank_details and user.payment_info %}

@@ -268,9 +268,9 @@
                 <tr>
                     <td><strong>{{ item.description }}</strong></td>
                     <td class="text-right">{{ item.quantity }}</td>
-                    <td class="text-right">{{ (item.unit_price_cents / 100) | round(2) }} {{ currency }}</td>
+                    <td class="text-right">{{ "{:,}".format(item.unit_price_cents) }} {{ currency }}</td>
                     <td class="text-right">{{ item.tax_rate }}%</td>
-                    <td class="text-right">{{ ((item.quantity * item.unit_price_cents) / 100) | round(2) }} {{ currency }}</td>
+                    <td class="text-right">{{ "{:,}".format((item.quantity * item.unit_price_cents)) }} {{ currency }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -278,57 +278,10 @@
     </div>
 
     {# ═══════════════════════════════════════════════════════════
-       SCHEDULE PAYMENT (affiché uniquement si échéancier valide)
-       Condition : existe + > 0 milestones + pas juste "100% seul"
-    ═══════════════════════════════════════════════════════════ #}
-    {% if payment_schedule and payment_schedule|length > 0 and not (payment_schedule|length == 1 and payment_schedule[0].percent == 100) %}
-    <div class="schedule-card">
-        <div class="schedule-header">
-            <span class="schedule-header-title">💳 Échéancier de paiement</span>
-            <span class="schedule-header-badge">{{ payment_schedule|length }} tranche{{ 's' if payment_schedule|length > 1 else '' }}</span>
-        </div>
-        <table class="schedule-table">
-            <thead>
-                <tr>
-                    <th style="width: 8%;">#</th>
-                    <th style="width: 42%;">Étape</th>
-                    <th style="width: 20%;">Date prévue</th>
-                    <th class="text-right" style="width: 12%;">Part</th>
-                    <th class="text-right" style="width: 18%;">Montant TTC</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for ms in payment_schedule %}
-                {% set ms_amount = (totals.grand_total_cents * ms.percent / 100) | round(0) | int %}
-                <tr>
-                    <td>
-                        <span class="schedule-step">{{ ms.sequence or loop.index }}</span>
-                    </td>
-                    <td>
-                        <div class="schedule-title">{{ ms.title or ('Échéance ' ~ loop.index) }}</div>
-                        {% if ms.description %}
-                        <div class="schedule-desc">{{ ms.description }}</div>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if ms.trigger_date %}
-                            {{ ms.trigger_date.strftime('%d/%m/%Y') if ms.trigger_date.strftime else ms.trigger_date }}
-                        {% else %}
-                            <span style="color: var(--text-muted); font-style: italic;">À convenir</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-right">
-                        <span class="schedule-percent">{{ ms.percent }}%</span>
-                    </td>
-                    <td class="text-right" style="font-weight: 700;">
-                        {{ (ms_amount / 100) | round(2) }} {{ currency }}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
+   SCHEDULE PAYMENT (CORRIGÉ : utilise document.payment_schedule)
+   Condition : existe + > 0 milestones + pas juste "100% seul"
+═══════════════════════════════════════════════════════════ #}
+
 
     <div class="bento-grid">
         <div class="bento-row">
@@ -344,21 +297,88 @@
                 <table class="totals-table">
                     <tr>
                         <td style="opacity: 0.8;">Total HT</td>
-                        <td class="text-right">{{ (totals.subtotal_cents / 100) | round(2) }} {{ currency }}</td>
+                        <td class="text-right">{{ "{:,}".format(totals.subtotal_cents) }} {{ currency }}</td>
                     </tr>
                     <tr>
                         <td style="opacity: 0.8;">Total TVA</td>
-                        <td class="text-right">{{ (totals.tax_total_cents / 100) | round(2) }} {{ currency }}</td>
+                        <td class="text-right">{{ "{:,}".format(totals.tax_total_cents) }} {{ currency }}</td>
                     </tr>
                     <tr>
                         <td style="font-weight: 600;">Total TTC</td>
-                        <td class="text-right grand-total-val">{{ (totals.grand_total_cents / 100) | round(2) }} {{ currency }}</td>
+                        <td class="text-right grand-total-val">{{ "{:,}".format(totals.grand_total_cents) }} {{ currency }}</td>
                     </tr>
                 </table>
             </div>
         </div>
     </div>
-
+{% if document.payment_schedule and document.payment_schedule|length > 0 and not (document.payment_schedule|length == 1 and document.payment_schedule[0].percent == 100) %}
+<div class="schedule-card">
+    <div class="schedule-header">
+        <span class="schedule-header-title">Échéancier de paiement</span>
+        <span class="schedule-header-badge">{{ document.payment_schedule|length }} tranche{{ 's' if document.payment_schedule|length > 1 else '' }}</span>
+    </div>
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th style="width: 8%;">#</th>
+                <th style="width: 42%;">Étape</th>
+                <th style="width: 20%;">Date prévue</th>
+                <th class="text-right" style="width: 12%;">Part</th>
+                <th class="text-right" style="width: 18%;">Montant TTC</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ms in document.payment_schedule | sort(attribute='sequence') %}
+            {# Calcul du montant : utilise amount_cents si dispo, sinon calcule depuis le % #}
+            {% set ms_amount = ms.amount_cents if ms.amount_cents else (totals.grand_total_cents * ms.percent / 100) | round(0) | int %}
+            <tr>
+                <td>
+                    <span class="schedule-step">{{ ms.sequence or loop.index }}</span>
+                </td>
+                <td>
+                    <div class="schedule-title">{{ ms.title or ('Échéance ' ~ loop.index) }}</div>
+                    {% if ms.description %}
+                    <div class="schedule-desc">{{ ms.description }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if ms.trigger_date %}
+                        {% if ms.trigger_date.strftime %}
+                            {{ ms.trigger_date.strftime('%d/%m/%Y') }}
+                        {% else %}
+                            {{ ms.trigger_date }}
+                        {% endif %}
+                    {% else %}
+                        <span style="color: var(--text-muted); font-style: italic;">À convenir</span>
+                    {% endif %}
+                </td>
+                <td class="text-right">
+                    <span class="schedule-percent">{{ ms.percent }}%</span>
+                </td>
+                <td class="text-right" style="font-weight: 700;">
+                    {{ "{:,}".format(ms_amount) }} {{ currency }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {# Récapitulatif total #}
+    {% set total_percent = document.payment_schedule | sum(attribute='percent') %}
+    {% set total_amount = document.payment_schedule | sum(attribute='amount_cents') %}
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 9.5pt;">
+        <span style="font-weight: 700; text-transform: uppercase; font-size: 8pt; color: var(--text-muted); letter-spacing: 0.05em;">
+            Total échéancier
+        </span>
+        <span style="font-weight: 700;">
+            {{ "{:,}".format(total_amount) }} {{ currency }}
+            <span style="font-size: 8.5pt; font-weight: 600; color: var(--text-muted); margin-left: 6px;">
+                ({{ total_percent }}%)
+            </span>
+        </span>
+    </div>
+</div>
+{% endif %}
     <div class="footer">
         {% if template.show_bank_details and user.payment_info %}
         {{ user.payment_info | replace('\n', ' • ') }}<br>
