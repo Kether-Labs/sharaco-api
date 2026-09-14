@@ -14,6 +14,42 @@
             --soft: #f9fafb;
         }
 
+        /* ═══════════ SUIVI DE PAIEMENT (facture) ═══════════ */
+.schedule-tracking {
+    margin-top: 8mm;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-card);
+    page-break-inside: avoid;
+}
+.st-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 15px; background: #f1f5f9; border-bottom: 1px solid var(--border);
+}
+.st-title { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.st-ref   { font-size: 8pt; color: var(--text-muted); }
+.st-progress-wrap { height: 8px; background: #e2e8f0; margin: 12px 15px 4px; border-radius: 99px; overflow: hidden; }
+.st-progress-bar  { height: 100%; background: var(--primary); border-radius: 99px; }
+.st-progress-label { display: flex; justify-content: space-between; padding: 0 15px 10px; font-size: 8pt; color: var(--text-muted); }
+.st-table { width: 100%; border-collapse: collapse; }
+.st-table th { font-size: 8pt; text-transform: uppercase; color: var(--text-muted); padding: 6px 15px; border-bottom: 1px solid var(--border); }
+.st-table td { padding: 8px 15px; border-bottom: 1px solid var(--border); font-size: 9pt; }
+.st-table tr:last-child td { border-bottom: none; }
+.st-row-title { font-weight: 600; }
+.st-current td { background: #f8fafc; }
+.st-current td:first-child { border-left: 3px solid var(--primary); }
+.st-badge-current {
+    display: inline-block; margin-top: 2px; font-size: 7.5pt; font-weight: 700;
+    color: var(--primary); border: 1px solid var(--primary); padding: 1px 6px; border-radius: 4px;
+}
+.st-status { font-size: 8.5pt; font-weight: 600; }
+.st-paid { color: #16a34a; }
+.st-due { color: var(--primary); font-weight: 700; }
+.st-invoiced { color: #d97706; }
+.st-pending { color: var(--text-muted); }
+.st-footnote { padding: 8px 15px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 9pt; }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {

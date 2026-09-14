@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 from app.models.document import DocumentType, DocumentStatus
+from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,6 @@ class PDFRenderer:
 
     TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
-    # ✅ Templates par type de document (devis ou facture)
     QUOTE_LAYOUT_MAP = {
         "classic": "classic.html",
         "modern": "modern.html",
@@ -35,9 +35,7 @@ class PDFRenderer:
         "studio": "studio.html",
     }
 
-    # ✅ Template unique pour les factures (design épuré & légal)
     INVOICE_TEMPLATE = "facture.html"
-
     DEFAULT_CURRENCY = "FCFA"
 
     def __init__(self):
@@ -49,11 +47,6 @@ class PDFRenderer:
         self._preview_cache: dict[str, bytes] = {}
 
     def _get_layout_file(self, layout_style: str, doc_type: DocumentType) -> str:
-        """
-        Retourne le fichier template selon le type de document.
-        - FACTURE → toujours facture.html (design épuré & légal)
-        - DEVIS → selon le layout_style choisi
-        """
         if doc_type == DocumentType.FACTURE:
             return self.INVOICE_TEMPLATE
         return self.QUOTE_LAYOUT_MAP.get(layout_style, "classic.html")
@@ -77,12 +70,70 @@ class PDFRenderer:
             "grand_total_cents": grand_total_cents,
         }
 
-    # ✅ NOUVELLE MÉTHODE : charger le devis source (pour les factures)
+    # ✅ MODIF 1 : ajout de `self` et typage `db`
+    async def _build_invoice_schedule_context(self, db: AsyncSession, document: Document) -> dict:
+        """
+        Construit le contexte 'Suivi de paiement' pour une FACTURE :
+        remonte au devis parent, lit son échéancier, calcule la progression
+        et identifie la tranche correspondant à cette facture.
+        """
+        empty = {
+            "payment_schedule": [],
+            "current_milestone": None,
+            "current_amount_cents": None,
+            "paid_percent": 0,
+            "paid_amount_cents": 0,
+            "total_schedule_cents": 0,
+            "source_quote_number": None,
+            "has_schedule": False,
+        }
+
+        if document.type != DocumentType.FACTURE or not document.source_document_id:
+            return empty
+
+        quote = await db.get(Document, document.source_document_id)
+        if not quote:
+            return empty
+
+        result = await db.execute(
+            select(PaymentSchedule)
+            .where(PaymentSchedule.document_id == quote.id)
+            .order_by(PaymentSchedule.sequence.asc())
+        )
+        milestones = list(result.scalars().all())
+
+        if not milestones or len(milestones) < 2:
+            return empty
+
+        rows = []
+        for m in milestones:
+            rows.append({
+                "sequence": m.sequence,
+                "title": m.title,
+                "percent": m.percent,
+                "amount_cents": m.amount_cents or 0,
+                "status": m.status.value if hasattr(m.status, "value") else str(m.status),
+                "paid_at": m.paid_at,
+                "is_current": m.invoice_id == document.id,
+            })
+
+        current = next((r for r in rows if r["is_current"]), None)
+        total_cents = sum(r["amount_cents"] for r in rows)
+        paid_cents = sum(r["amount_cents"] for r in rows if r["status"] == "PAID")
+        paid_percent = int(round(paid_cents / total_cents * 100)) if total_cents else 0
+
+        return {
+            "payment_schedule": rows,
+            "current_milestone": current,
+            "current_amount_cents": current["amount_cents"] if current else None,
+            "paid_percent": paid_percent,
+            "paid_amount_cents": paid_cents,
+            "total_schedule_cents": total_cents,
+            "source_quote_number": quote.number,
+            "has_schedule": True,
+        }
+
     async def _get_source_quote_number(self, db: AsyncSession, document: Document) -> str | None:
-        """
-        Récupère le numéro du devis d'origine si la facture en vient.
-        Retourne None si pas de lien.
-        """
         if document.type != DocumentType.FACTURE or not document.source_document_id:
             return None
         
@@ -114,11 +165,11 @@ class PDFRenderer:
             "items": document.items,
             "totals": totals,
             "currency": get_currency_symbol(user.currency or "XOF"),
-            # ✅ NOUVEAU : pour les factures (liaison au devis d'origine)
             "source_quote_number": source_quote_number,
         }
         return context
 
+    # ✅ MODIF 2 : appeler _build_invoice_schedule_context et merger
     async def render_html(
         self,
         document: Document,
@@ -126,28 +177,33 @@ class PDFRenderer:
         user: User,
         client: Client,
         currency: str = None,
-        db: AsyncSession = None,  # ✅ OPTIONNEL (par défaut None)
+        db: AsyncSession = None,
     ) -> str:
         """
         Rend le HTML d'un document (devis ou facture).
-        Nécessite une session DB pour charger les relations (devis source).
+        Nécessite une session DB pour charger les relations (devis source, échéancier).
         """
         try:
             layout_file = self._get_layout_file(template.layout_style, document.type)
             tmpl = self.env.get_template(layout_file)
             
-            # Charger le numéro du devis source pour les factures
             source_quote_number = await self._get_source_quote_number(db, document)
             
             context = self._build_context(
                 document, template, user, client, currency, source_quote_number
             )
+            
+            # ✅ NOUVEAU : fusionner le suivi de paiement pour les factures
+            if db:
+                schedule_context = await self._build_invoice_schedule_context(db, document)
+                context.update(schedule_context)
+            
             return tmpl.render(**context)
         except Exception as e:
             logger.error(f"Erreur lors du rendu HTML: {e}", exc_info=True)
             raise
 
-    # ✅ NOUVEAU : version SYNCHRONE pour le preview (pas besoin de DB)
+    # ✅ MODIF 3 : render_html_preview reste inchangé (pas de DB, pas de suivi)
     def render_html_preview(
         self,
         document: Document,
@@ -158,7 +214,7 @@ class PDFRenderer:
     ) -> str:
         """
         Rend le HTML pour le preview en temps réel (pas de DB).
-        Pour les factures de preview, on n'a pas de devis source réel.
+        Le suivi de paiement sera masqué (has_schedule = False par défaut).
         """
         try:
             layout_file = self._get_layout_file(template.layout_style, document.type)
@@ -170,7 +226,6 @@ class PDFRenderer:
             raise
 
     def _get_mock_user(self) -> User:
-        """Crée un utilisateur mock pour les previews publiques."""
         return User(
             id=uuid4(),
             email="demo@exemple.com",
@@ -189,7 +244,6 @@ class PDFRenderer:
         currency: str = None,
         doc_type: DocumentType = DocumentType.DEVIS,
     ) -> str:
-        """Rend un aperçu HTML avec des FAUSSES données (devis ou facture)."""
         if user is None:
             user = self._get_mock_user()
 
@@ -245,37 +299,18 @@ class PDFRenderer:
         return self.render_html_preview(fake_doc, template, user, fake_client, currency)
 
     async def _generate_screenshot(self, html_string: str) -> bytes:
-        """Génère un screenshot PNG à partir du HTML."""
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
                     headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                    ]
+                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 )
-
-                page = await browser.new_page(
-                    viewport={"width": 794, "height": 1123}
-                )
-
-                await page.set_content(
-                    html_string,
-                    wait_until="domcontentloaded",
-                )
-
+                page = await browser.new_page(viewport={"width": 794, "height": 1123})
+                await page.set_content(html_string, wait_until="domcontentloaded")
                 await page.wait_for_timeout(800)
-
-                screenshot = await page.screenshot(
-                    full_page=True,
-                    type="png",
-                )
-
+                screenshot = await page.screenshot(full_page=True, type="png")
                 await browser.close()
                 return screenshot
-
         except Exception as e:
             logger.error(f"Erreur Playwright: {e}", exc_info=True)
             raise
@@ -285,8 +320,6 @@ class PDFRenderer:
         layout_style: str,
         currency: str = "FCFA",
     ) -> bytes:
-        """Génère une image PNG d'aperçu du template (PUBLIC - sans user)."""
-        
         if layout_style in self._preview_cache:
             logger.info(f"Preview {layout_style} servi depuis le cache")
             return self._preview_cache[layout_style]
@@ -307,14 +340,12 @@ class PDFRenderer:
                 template=mock_template,
                 user=None,
                 currency=currency,
-                doc_type=DocumentType.DEVIS,  # Preview publique = toujours devis
+                doc_type=DocumentType.DEVIS,
             )
 
             screenshot = await self._generate_screenshot(html_string)
-
             self._preview_cache[layout_style] = screenshot
             logger.info(f"Preview {layout_style} généré et mis en cache")
-
             return screenshot
 
         except Exception as e:
@@ -322,7 +353,6 @@ class PDFRenderer:
             raise
     
     async def render_png_from_html(self, html_string: str) -> bytes:
-        """Génère un PNG directement depuis une chaîne HTML."""
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
@@ -330,24 +360,16 @@ class PDFRenderer:
                     args=['--no-sandbox', '--disable-setuid-sandbox']
                 )
                 page = await browser.new_page(viewport={"width": 794, "height": 1123})
-                
                 await page.set_content(html_string, wait_until="domcontentloaded")
                 await page.wait_for_timeout(500)
-                
-                screenshot = await page.screenshot(
-                    full_page=True,
-                    type="png"
-                )
-                
+                screenshot = await page.screenshot(full_page=True, type="png")
                 await browser.close()
                 return screenshot
-            
         except Exception as e:
             logger.error(f"Erreur génération PNG depuis HTML: {e}", exc_info=True)
             raise
 
     async def render_pdf_from_html(self, html_string: str) -> BytesIO:
-        """Génère un PDF directement depuis une chaîne HTML."""
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
@@ -355,22 +377,17 @@ class PDFRenderer:
                     args=['--no-sandbox', '--disable-setuid-sandbox']
                 )
                 page = await browser.new_page()
-                
                 await page.set_content(html_string, wait_until="domcontentloaded")
                 await page.wait_for_timeout(500)
-                
                 pdf_bytes = await page.pdf(
                     format="A4",
                     print_background=True,
                     margin={"top": "15mm", "right": "20mm", "bottom": "15mm", "left": "20mm"}
                 )
-                
                 await browser.close()
-                
                 pdf_buffer = BytesIO(pdf_bytes)
                 pdf_buffer.seek(0)
                 return pdf_buffer
-                
         except Exception as e:
             logger.error(f"Erreur génération PDF depuis HTML: {e}", exc_info=True)
             raise
@@ -384,7 +401,6 @@ class PDFRenderer:
         client: Client,
         currency: str = None,
     ) -> BytesIO:
-        """Génère un PDF pour un document réel (avec accès DB)."""
         try:
             html_string = await self.render_html(db, document, template, user, client, currency)
 
@@ -394,26 +410,20 @@ class PDFRenderer:
                     args=['--no-sandbox', '--disable-setuid-sandbox']
                 )
                 page = await browser.new_page()
-
                 await page.set_content(html_string, wait_until="domcontentloaded")
                 await page.wait_for_timeout(500)
-
                 pdf_bytes = await page.pdf(
                     format="A4",
                     print_background=True,
                     margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
                 )
-
                 await browser.close()
-
                 pdf_buffer = BytesIO(pdf_bytes)
                 pdf_buffer.seek(0)
                 return pdf_buffer
-
         except Exception as e:
             logger.error(f"Erreur génération PDF: {e}", exc_info=True)
             raise
 
 
-# Instance globale
 pdf_renderer = PDFRenderer()

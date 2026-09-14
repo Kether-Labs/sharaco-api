@@ -1543,7 +1543,9 @@ async def get_document_preview_png(
         content=png_bytes,
         media_type="image/png",
         headers={
-            "Cache-Control": "public, max-age=3600",  # Cache 1 heure
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
             "Content-Disposition": f'inline; filename="preview-{document_id}.png"'
         }
     )
