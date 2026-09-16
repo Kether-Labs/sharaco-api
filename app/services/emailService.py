@@ -30,7 +30,7 @@ class EmailService:
     ) -> dict:
         """Envoie via Resend API."""
         try:
-            from_email = settings.RESEND_FROM_EMAIL or "Sharaco <onboarding@resend.dev>"
+            from_email = settings.RESEND_FROM_EMAIL or "Sharaco <no-reply@sharaco.fecascrab.com>"
             logger.info(f"📧 Envoi Resend → {to_email} | From: {from_email}")
             
             email_data = {

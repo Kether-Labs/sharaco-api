@@ -1,4 +1,7 @@
+# app/services/pdfRenderer.py
 import os
+import hashlib
+import json
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from io import BytesIO
@@ -44,7 +47,8 @@ class PDFRenderer:
             autoescape=True,
             cache_size=100,
         )
-        self._preview_cache: dict[str, bytes] = {}
+        self._preview_cache: dict[str, bytes] = {}           # templates génériques
+        self._document_preview_cache: dict[str, bytes] = {}  # ✅ previews documents (cache intelligent)
 
     def _get_layout_file(self, layout_style: str, doc_type: DocumentType) -> str:
         if doc_type == DocumentType.FACTURE:
@@ -70,7 +74,119 @@ class PDFRenderer:
             "grand_total_cents": grand_total_cents,
         }
 
-    # ✅ MODIF 1 : ajout de `self` et typage `db`
+    # ═══════════════════════════════════════════════════════════
+    # ✅ CACHE INTELLIGENT (hash du contenu)
+    # ═══════════════════════════════════════════════════════════
+
+    def _compute_render_hash(
+        self,
+        document: Document,
+        template: DocumentTemplate,
+        user: User,
+        client: Client,
+        items: list,
+        schedule: list,
+    ) -> str:
+        """
+        Calcule un hash de TOUT ce qui influence le rendu visuel.
+        Si un seul de ces éléments change → hash différent → cache invalidé auto.
+        """
+        def _status(v):
+            return v.value if hasattr(v, "value") else str(v)
+
+        payload = {
+            # Document
+            "doc": {
+                "number": document.number,
+                "status": _status(document.status),
+                "type": _status(document.type),
+                "layout": document.layout_style,
+                "notes": document.notes,
+                "due": document.due_date.isoformat() if document.due_date else None,
+                "created": document.created_at.isoformat() if document.created_at else None,
+                "colors": [
+                    document.primary_color, document.secondary_color, document.accent_color,
+                    document.background_color, document.text_color, document.font_family,
+                ],
+            },
+            # Template
+            "tpl": [
+                getattr(template, "logo_url", None),
+                getattr(template, "header_text", None),
+                getattr(template, "footer_text", None),
+                getattr(template, "show_bank_details", None),
+                getattr(template, "show_tax_id", None),
+                getattr(template, "primary_color", None),
+            ],
+            # User (infos entreprise affichées)
+            "user": [
+                user.company_name, user.address, getattr(user, "phone", None),
+                user.email, user.tax_id, getattr(user, "vat_number", None),
+                user.payment_info, getattr(user, "currency", None),
+            ],
+            # Client (affiché sur le document)
+            "client": [client.name, client.email, getattr(client, "phone", None), client.address] if client else None,
+            # Lignes du document
+            "items": [
+                [i.description, i.quantity, i.unit_price_cents, i.tax_rate]
+                for i in (items or [])
+            ],
+            # Échéancier (statuts + dates de paiement)
+            "schedule": [
+                [m.sequence, m.title, m.percent, m.amount_cents, _status(m.status),
+                 m.paid_at.isoformat() if m.paid_at else None]
+                for m in (schedule or [])
+            ],
+        }
+        raw = json.dumps(payload, sort_keys=True, default=str)
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    async def get_or_render_document_png(
+        self,
+        db: AsyncSession,
+        document: Document,
+        template: DocumentTemplate,
+        user: User,
+        client: Client,
+    ) -> bytes:
+        """
+        Retourne le PNG d'un document, depuis le cache si possible.
+        La clé de cache inclut un hash du contenu → toujours à jour, jamais périmée.
+        """
+        items = document.items or []
+        schedule = document.payment_schedule or []
+
+        content_hash = self._compute_render_hash(document, template, user, client, items, schedule)
+        cache_key = f"{document.id}:{content_hash}"
+
+        # ✅ CACHE HIT : on renvoie directement (instantané)
+        if cache_key in self._document_preview_cache:
+            logger.info(f"⚡ Preview {document.id} servie depuis le cache")
+            return self._document_preview_cache[cache_key]
+
+        # ❌ CACHE MISS : on régénère
+        logger.info(f"🔄 Preview {document.id} régénérée (cache miss)")
+        html = await self.render_html(
+            document=document,
+            template=template,
+            user=user,
+            client=client,
+            db=db,
+        )
+        png = await self.render_png_from_html(html)
+
+        # Stocke + limite la taille du cache (évite fuite mémoire)
+        self._document_preview_cache[cache_key] = png
+        if len(self._document_preview_cache) > 200:
+            for k in list(self._document_preview_cache.keys())[:100]:
+                self._document_preview_cache.pop(k, None)
+
+        return png
+
+    # ═══════════════════════════════════════════════════════════
+    # CONTEXTE JINJA
+    # ═══════════════════════════════════════════════════════════
+
     async def _build_invoice_schedule_context(self, db: AsyncSession, document: Document) -> dict:
         """
         Construit le contexte 'Suivi de paiement' pour une FACTURE :
@@ -136,7 +252,7 @@ class PDFRenderer:
     async def _get_source_quote_number(self, db: AsyncSession, document: Document) -> str | None:
         if document.type != DocumentType.FACTURE or not document.source_document_id:
             return None
-        
+
         try:
             stmt = select(Document).where(Document.id == document.source_document_id)
             result = await db.execute(stmt)
@@ -169,7 +285,6 @@ class PDFRenderer:
         }
         return context
 
-    # ✅ MODIF 2 : appeler _build_invoice_schedule_context et merger
     async def render_html(
         self,
         document: Document,
@@ -186,24 +301,23 @@ class PDFRenderer:
         try:
             layout_file = self._get_layout_file(template.layout_style, document.type)
             tmpl = self.env.get_template(layout_file)
-            
+
             source_quote_number = await self._get_source_quote_number(db, document)
-            
+
             context = self._build_context(
                 document, template, user, client, currency, source_quote_number
             )
-            
-            # ✅ NOUVEAU : fusionner le suivi de paiement pour les factures
+
+            # ✅ Fusionner le suivi de paiement pour les factures
             if db:
                 schedule_context = await self._build_invoice_schedule_context(db, document)
                 context.update(schedule_context)
-            
+
             return tmpl.render(**context)
         except Exception as e:
             logger.error(f"Erreur lors du rendu HTML: {e}", exc_info=True)
             raise
 
-    # ✅ MODIF 3 : render_html_preview reste inchangé (pas de DB, pas de suivi)
     def render_html_preview(
         self,
         document: Document,
@@ -298,6 +412,10 @@ class PDFRenderer:
 
         return self.render_html_preview(fake_doc, template, user, fake_client, currency)
 
+    # ═══════════════════════════════════════════════════════════
+    # PLAYWRIGHT : screenshots & PDF
+    # ═══════════════════════════════════════════════════════════
+
     async def _generate_screenshot(self, html_string: str) -> bytes:
         try:
             async with async_playwright() as p:
@@ -351,7 +469,7 @@ class PDFRenderer:
         except Exception as e:
             logger.error(f"Erreur génération preview PNG: {e}", exc_info=True)
             raise
-    
+
     async def render_png_from_html(self, html_string: str) -> bytes:
         try:
             async with async_playwright() as p:
@@ -426,4 +544,5 @@ class PDFRenderer:
             raise
 
 
+# Instance globale
 pdf_renderer = PDFRenderer()

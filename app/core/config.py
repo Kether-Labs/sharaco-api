@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     RESEND_API_KEY: str = Field(default="", env="RESEND_API_KEY")
 
-    RESEND_FROM_EMAIL: str = Field(default="Sharaco <onboarding@resend.dev>", env="RESEND_FROM_EMAIL")
+    RESEND_FROM_EMAIL: str = Field(default="Sharaco <no-reply@sharaco.fecascrab.com>", env="RESEND_FROM_EMAIL")
 
     @property
     def DATABASE_URL(self) -> str:

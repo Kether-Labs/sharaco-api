@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
-from app.models.payment_schedule import PaymentSchedule,MilestoneStatus
+from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
 from sqlalchemy import func, distinct
 from app.services.pdfRenderer import pdf_renderer
 from app.services.emailService import EmailService
@@ -15,10 +15,10 @@ from typing import Optional
 from app.db.engine import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.models.document import DocumentType, DocumentStatus,DocumentItem
+from app.models.document import DocumentType, DocumentStatus, DocumentItem
 from app.services.documentService import DocumentService
 from app.services.templateService import TemplateService
-from app.utils.datetime import to_naive_utc 
+from app.utils.datetime import to_naive_utc
 from datetime import datetime, timezone, timedelta
 from app.services.clientService import ClientService
 from app.schemas.document import (
@@ -44,17 +44,9 @@ router = APIRouter(tags=["documents"])
 logger = logging.getLogger(__name__)
 
 
-
-
-
 # ============================================================
-# 📄 LIVE PREVIEW (pas de sauvegarde DB) - DOIT ÊTRE EN PREMIER
+# 📄 LIVE PREVIEW (pas de sauvegarde DB)
 # ============================================================
-# app/api/v1/document.py
-
-# app/api/v1/document.py
-
-# app/api/v1/document.py
 
 @router.get("/stats", response_model=dict)
 async def get_documents_stats(
@@ -63,9 +55,6 @@ async def get_documents_stats(
 ):
     logger.info(f"📊 GET /documents/stats")
 
-    # ═══════════════════════════════════════════════
-    # 1. DEVIS par statut (simple, pas de jointure)
-    # ═══════════════════════════════════════════════
     quotes_count_stmt = (
         select(Document.status, func.count(Document.id))
         .select_from(Document)
@@ -75,14 +64,10 @@ async def get_documents_stats(
     quotes_count_result = await db.execute(quotes_count_stmt)
     quotes_by_status = {row[0].value: row[1] for row in quotes_count_result.all()}
 
-    # ═══════════════════════════════════════════════
-    # 2. FACTURES : count des documents UNIQUES par statut
-    #    (distinct évite la duplication avec les items)
-    # ═══════════════════════════════════════════════
     invoices_count_stmt = (
         select(
             Document.status,
-            func.count(distinct(Document.id)),  # ✅ CORRECTION : distinct
+            func.count(distinct(Document.id)),
         )
         .select_from(Document)
         .where(Document.user_id == current_user.id, Document.type == DocumentType.FACTURE)
@@ -91,11 +76,6 @@ async def get_documents_stats(
     invoices_count_result = await db.execute(invoices_count_stmt)
     invoices_count_by_status = {row[0].value: row[1] for row in invoices_count_result.all()}
 
-    # ═══════════════════════════════════════════════
-    # 3. FACTURES : totaux par statut (avec jointure)
-    #    On utilise un DISTINCT sur la somme via sous-requête
-    # ═══════════════════════════════════════════════
-    # Calcul du total TTC par facture (sous-requête)
     invoice_totals_subq = (
         select(
             Document.id.label("doc_id"),
@@ -113,8 +93,7 @@ async def get_documents_stats(
         .group_by(Document.id, Document.status)
         .subquery()
     )
-    
-    # Agrégation par statut sur la sous-requête (évite la duplication)
+
     invoices_totals_stmt = (
         select(
             invoice_totals_subq.c.status,
@@ -127,9 +106,6 @@ async def get_documents_stats(
         row[0].value: int(row[1]) for row in invoices_totals_result.all()
     }
 
-    # ═══════════════════════════════════════════════
-    # 4. Combiner count + totals
-    # ═══════════════════════════════════════════════
     invoices_by_status = {}
     all_statuses = set(invoices_count_by_status.keys()) | set(invoices_totals_by_status.keys())
     for status in all_statuses:
@@ -138,9 +114,6 @@ async def get_documents_stats(
             "total_cents": invoices_totals_by_status.get(status, 0),
         }
 
-    # ═══════════════════════════════════════════════
-    # 5. Pipeline : devis ACCEPTED (même technique)
-    # ═══════════════════════════════════════════════
     pipeline_subq = (
         select(
             Document.id.label("doc_id"),
@@ -161,37 +134,27 @@ async def get_documents_stats(
         .group_by(Document.id)
         .subquery()
     )
-    
+
     pipeline_stmt = select(func.coalesce(func.sum(pipeline_subq.c.total_cents), 0))
     pipeline_result = await db.execute(pipeline_stmt)
     pipeline_cents = int(pipeline_result.scalar() or 0)
 
-    # ═══════════════════════════════════════════════
-    # 6. Calculs métier (CORRIGÉS)
-    # ═══════════════════════════════════════════════
-    
-    # ✅ VRAI CA : factures PAYÉES uniquement
     paid = invoices_by_status.get("PAID", {"count": 0, "total_cents": 0})
     revenue_cents = paid["total_cents"]
     paid_count = paid["count"]
-    
-    # 💰 Créances : factures envoyées MAIS NON PAYÉES
-    #    (DRAFT n'est PAS inclus car pas encore envoyée)
+
     sent = invoices_by_status.get("SENT", {"count": 0, "total_cents": 0})
     viewed = invoices_by_status.get("VIEWED", {"count": 0, "total_cents": 0})
     receivables_cents = sent["total_cents"] + viewed["total_cents"]
     receivables_count = sent["count"] + viewed["count"]
-    
-    # 📝 Brouillons : factures en préparation (mémoire séparée)
+
     drafts = invoices_by_status.get("DRAFT", {"count": 0, "total_cents": 0})
     drafts_cents = drafts["total_cents"]
     drafts_count = drafts["count"]
-    
-    # 🔴 Factures en retard
+
     overdue_cents = 0
     overdue_count = 0
 
-    # Taux de conversion des devis
     quotes_sent = (
         quotes_by_status.get("SENT", 0) +
         quotes_by_status.get("VIEWED", 0) +
@@ -201,44 +164,29 @@ async def get_documents_stats(
     quotes_accepted = quotes_by_status.get("ACCEPTED", 0)
     conversion_rate = (quotes_accepted / quotes_sent * 100) if quotes_sent > 0 else 0
 
-    # Taux d'encaissement (factures payées / total factures hors brouillons)
-    total_invoices_count = (
-        paid_count + receivables_count + overdue_count
-    )
+    total_invoices_count = paid_count + receivables_count + overdue_count
     collection_rate = (
-        paid_count / total_invoices_count * 100 
+        paid_count / total_invoices_count * 100
         if total_invoices_count > 0 else 0
     )
 
     return {
-        # ✅ VRAI CA (le plus important)
         "revenue_cents": revenue_cents,
         "paid_invoices_count": paid_count,
-        
-        # 💰 Argent dû par les clients
         "receivables_cents": receivables_cents,
         "receivables_count": receivables_count,
-        
-        # 📝 Brouillons (factures en préparation)
         "drafts_cents": drafts_cents,
         "drafts_count": drafts_count,
-        
-        # 🔴 Retards de paiement
         "overdue_cents": overdue_cents,
         "overdue_count": overdue_count,
-        
-        # 📊 Pipeline commercial (devis signés non facturés)
         "pipeline_cents": pipeline_cents,
         "accepted_quotes_count": quotes_accepted,
-        
-        # 📈 Taux
         "conversion_rate": round(conversion_rate, 1),
         "collection_rate": round(collection_rate, 1),
-        
-        # Détails par statut
         "quotes_by_status": quotes_by_status,
         "invoices_by_status": invoices_by_status,
     }
+
 
 @router.post("/preview", response_class=HTMLResponse)
 async def preview_document_live(
@@ -247,7 +195,6 @@ async def preview_document_live(
     db: AsyncSession = Depends(get_db),
 ):
     """Aperçu HTML en temps réel."""
-    
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
     except ValueError:
@@ -260,7 +207,6 @@ async def preview_document_live(
         except ValueError:
             template_uuid = None
 
-   
     html_content = await DocumentService.render_preview(
         db=db,
         user=current_user,
@@ -295,8 +241,6 @@ async def preview_document_pdf(
     db: AsyncSession = Depends(get_db),
 ):
     """Génère un PDF sans sauvegarder en DB (Playwright)."""
-    print(f"📥 PDF - payment_schedule reçu: {preview_data.payment_schedule}")
-    
     try:
         doc_type = DocumentType(preview_data.type.upper()) if preview_data.type else DocumentType.DEVIS
     except ValueError:
@@ -334,7 +278,6 @@ async def preview_document_pdf(
         reference=preview_data.reference,
     )
 
-    # ✅ CORRECTION : Utiliser render_pdf_from_html au lieu de render_preview_html
     pdf_buffer = await pdf_renderer.render_pdf_from_html(html_content)
 
     prefix = "DEV" if doc_type == DocumentType.DEVIS else "FACT"
@@ -351,15 +294,8 @@ async def preview_document_pdf(
 
 
 # ============================================================
-# 📄 PDF & PREVIEW pour documents sauvegardés
+# 📄 EMAIL & PARTAGE
 # ============================================================
-
-
-
-
-
-
-
 
 @router.post("/{document_id}/send-email")
 async def send_document_email(
@@ -368,108 +304,66 @@ async def send_document_email(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Envoie un document (devis ou facture) par email au client.
-    
-    - Génère les tokens (share_token + client_token)
-    - Envoie l'email avec le lien privé
-    - Change le statut DRAFT → SENT
-    - Optionnel : joint le PDF en pièce jointe
-    
-    Returns:
-        - to_email : email destinataire
-        - client_url : lien privé pour le client
-        - share_url : lien public partageable
-        - document_number : numéro du document
-    """
     logger.info(f"📧 POST /documents/{document_id}/send-email")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
-    # Vérification du statut
+
     if document.status not in [DocumentStatus.DRAFT, DocumentStatus.SENT]:
         raise HTTPException(
             status_code=400,
             detail=f"Ce document ne peut pas être envoyé (statut actuel: {document.status.value})"
         )
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 2. Charger le client
-    # ═══════════════════════════════════════════════════════════════
-    
+
     client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
-    
-    # Déterminer l'email destinataire
+
     to_email = email_data.override_email or client.email
     if not to_email:
         raise HTTPException(status_code=400, detail="Email du client requis")
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 3. Générer les tokens (share + client)
-    # ═══════════════════════════════════════════════════════════════
+
     if not document.share_token:
         document.share_token = Document.generate_share_token()
         document.share_enabled = True
         document.share_expires_at = to_naive_utc(
             datetime.now(timezone.utc) + timedelta(days=30)
         )
-    
+
     if not document.client_token:
         document.client_token = Document.generate_share_token()
         document.client_token_email = to_email
-    
+
     db.add(document)
     await db.commit()
     await db.refresh(document)
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 4. Construire les URLs
-    # ═══════════════════════════════════════════════════════════════
+
     base_url = settings.FRONTEND_URL or "http://localhost:3000"
     client_url = f"{base_url}/client/{document.client_token}"
     share_url = f"{base_url}/view/{document.share_token}"
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 5. Calculer les totaux
-    # ═══════════════════════════════════════════════════════════════
+
     totals = DocumentService.calculate_totals(document.items)
-    # ✅ Formatage FCFA : pas de division par 100
     total_amount = f"{totals['grand_total_cents']:,} FCFA"
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 6. Formater la date d'échéance
-    # ═══════════════════════════════════════════════════════════════
+
     due_date_str = None
     if document.due_date:
         due_date_str = document.due_date.strftime("%d/%m/%Y")
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 7. Préparer les infos user
-    # ═══════════════════════════════════════════════════════════════
+
     user_name = (
         getattr(current_user, 'full_name', None) or
         getattr(current_user, 'first_name', None) or
         current_user.email.split('@')[0]
     )
     user_company = getattr(current_user, 'company_name', None) or "Sharaco"
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 8. Générer le PDF si demandé (optionnel)
-    # ═══════════════════════════════════════════════════════════════
+
     pdf_bytes = None
     if email_data.attach_pdf:
         try:
-            from app.services.pdfRenderer import pdf_renderer
-            from app.services.templateService import TemplateService
-            
             template = await TemplateService.get_by_id(db, document.template_id, current_user.id)
             if not template:
                 template = await TemplateService.get_default(db, current_user.id)
-            
+
             pdf_buffer = await pdf_renderer.render_pdf(
                 db=db,
                 document=document,
@@ -482,10 +376,7 @@ async def send_document_email(
         except Exception as e:
             logger.warning(f"⚠️ Impossible de générer le PDF: {e}")
             pdf_bytes = None
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 9. Envoyer l'email selon le type
-    # ═══════════════════════════════════════════════════════════════
+
     try:
         if document.type == DocumentType.DEVIS:
             result = await EmailService.send_devis(
@@ -499,7 +390,7 @@ async def send_document_email(
                 user_company=user_company,
                 custom_message=email_data.custom_message or "",
             )
-        else:  # FACTURE
+        else:
             result = await EmailService.send_facture(
                 to_email=to_email,
                 client_name=client.name,
@@ -514,25 +405,19 @@ async def send_document_email(
     except Exception as e:
         logger.error(f"❌ Erreur envoi email: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur d'envoi: {str(e)}")
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 10. Vérifier le succès
-    # ═══════════════════════════════════════════════════════════════
+
     if not result.get("success"):
         raise HTTPException(
             status_code=500,
             detail=f"Erreur d'envoi: {result.get('error', 'Erreur inconnue')}"
         )
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 11. Mettre à jour le statut DRAFT → SENT
-    # ═══════════════════════════════════════════════════════════════
+
     if document.status == DocumentStatus.DRAFT:
         document.status = DocumentStatus.SENT
         document.sent_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
-        
+
         logger.info(
             f"✅ {document.type.value} {document.number} envoyé à {to_email} "
             f"(statut: DRAFT → SENT)"
@@ -541,10 +426,7 @@ async def send_document_email(
         logger.info(
             f"📧 {document.type.value} {document.number} renvoyé à {to_email}"
         )
-    
-    # ═══════════════════════════════════════════════════════════════
-    # 12. Retourner la réponse
-    # ═══════════════════════════════════════════════════════════════
+
     return {
         "message": "Email envoyé avec succès",
         "to_email": to_email,
@@ -565,36 +447,33 @@ async def generate_share_link(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Génère ou régénère un lien de partage pour un document."""
     logger.info(f"🔗 POST /documents/{document_id}/share")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
-    # Générer un nouveau token
+
     document.share_token = Document.generate_share_token()
     document.share_enabled = True
-    # ✅ CORRECTION : Convertir en datetime naive
     document.share_expires_at = to_naive_utc(
         datetime.now(timezone.utc) + timedelta(days=expires_days)
     )
-    
+
     db.add(document)
     await db.commit()
     await db.refresh(document)
-    
-    # Construire l'URL publique
+
     base_url = settings.FRONTEND_URL or "http://localhost:3000"
     share_url = f"{base_url}/view/{document.share_token}"
-    
+
     logger.info(f"✅ Lien de partage généré: {share_url}")
-    
+
     return {
         "share_url": share_url,
         "share_token": document.share_token,
         "expires_at": document.share_expires_at,
     }
+
 
 @router.delete("/{document_id}/share")
 async def revoke_share_link(
@@ -602,22 +481,25 @@ async def revoke_share_link(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Révoque le lien de partage d'un document."""
     logger.info(f"🔗 DELETE /documents/{document_id}/share")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     document.share_token = None
     document.share_enabled = False
     document.share_expires_at = None
-    
+
     db.add(document)
     await db.commit()
-    
+
     return {"message": "Lien de partage révoqué"}
 
+
+# ============================================================
+# 📄 ACTIONS CLIENT (accepter/refuser)
+# ============================================================
 
 @router.post("/client/{token}/accept")
 async def accept_document_as_client(
@@ -625,62 +507,35 @@ async def accept_document_as_client(
     data: AcceptDocumentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Le client accepte le devis via le token PRIVÉ.
-    
-    Workflow :
-    1. Valide le token (existence, non-expiration)
-    2. Vérifie l'idempotence (déjà accepté ?)
-    3. Sauvegarde la signature
-    4. Appelle handle_quote_acceptance qui :
-       - Marque le devis comme ACCEPTED
-       - Crée une facture auto selon les settings
-       - Notifie le pro
-    5. Commit final
-    """
     logger.info(f"✅ POST /documents/client/{token[:8]}.../accept")
-    
-    # ═══════════════════════════════════════════════
-    # 1. Récupérer le document via le token privé
-    # ═══════════════════════════════════════════════
+
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items))  # ✅ Charger les items pour la facture
+        .options(selectinload(Document.items))
         .where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
-    # ═══════════════════════════════════════════════
-    # 2. Validations
-    # ═══════════════════════════════════════════════
+
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
-    
-    # Vérifier expiration
+
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
-    
-    # Vérifier que le document peut être accepté
+
     if document.type != DocumentType.DEVIS:
-        raise HTTPException(
-            status_code=400,
-            detail="Seuls les devis peuvent être acceptés"
-        )
-    
+        raise HTTPException(status_code=400, detail="Seuls les devis peuvent être acceptés")
+
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
             detail=f"Ce document ne peut pas être accepté (statut: {document.status})"
         )
-    
-    # ═══════════════════════════════════════════════
-    # 3. IDEMPOTENCE : Si déjà accepté, retourner succès
-    # ═══════════════════════════════════════════════
+
     if document.status == DocumentStatus.ACCEPTED:
         logger.info(f"ℹ️ Document {document.id} déjà accepté")
         return {
@@ -691,18 +546,12 @@ async def accept_document_as_client(
             "already_accepted": True,
             "invoice_created": False,
         }
-    
-    # ═══════════════════════════════════════════════
-    # 4. Sauvegarder la signature du client
-    # ═══════════════════════════════════════════════
+
     document.signature_name = data.signature_name
     db.add(document)
-    
+
     logger.info(f"✍️ Signature enregistrée: '{data.signature_name}'")
-    
-    # ═══════════════════════════════════════════════
-    # 5. Appeler le handler qui fait tout le reste
-    # ═══════════════════════════════════════════════
+
     try:
         acceptance_result = await DocumentService.handle_quote_acceptance(
             db=db,
@@ -710,7 +559,6 @@ async def accept_document_as_client(
         )
     except Exception as e:
         logger.error(f"❌ Erreur handle_quote_acceptance: {e}", exc_info=True)
-        # Fallback : au moins marquer comme accepté
         document.signature_name = data.signature_name
         document.status = DocumentStatus.ACCEPTED
         document.accepted_at = to_naive_utc(datetime.now(timezone.utc))
@@ -720,23 +568,17 @@ async def accept_document_as_client(
             "has_schedule": False,
             "auto_sent": False,
         }
-    
-    # ═══════════════════════════════════════════════
-    # 6. Commit final
-    # ═══════════════════════════════════════════════
+
     await db.commit()
     await db.refresh(document)
-    
+
     invoice = acceptance_result.get("invoice")
-    
+
     logger.info(
         f"✅ Devis {document.id} accepté par '{data.signature_name}'"
         + (f" → facture {invoice.number} créée" if invoice else " (pas de facture auto)")
     )
-    
-    # ═══════════════════════════════════════════════
-    # 7. Retour enrichi
-    # ═══════════════════════════════════════════════
+
     return {
         "message": (
             f"Devis accepté avec succès"
@@ -746,7 +588,6 @@ async def accept_document_as_client(
         "accepted_at": document.accepted_at,
         "signature_name": document.signature_name,
         "already_accepted": False,
-        # ✅ Infos sur la facture créée (pour UI)
         "invoice_created": invoice is not None,
         "invoice_id": str(invoice.id) if invoice else None,
         "invoice_number": invoice.number if invoice else None,
@@ -761,27 +602,24 @@ async def refuse_document_as_client(
     data: RefuseDocumentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Le client refuse le devis via le token PRIVÉ."""
     logger.info(f"❌ POST /documents/client/{token[:8]}.../refuse")
-    
+
     result = await db.execute(
         select(Document).where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
-    
-    # Vérifier expiration
+
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
-    
-    # Idempotence
+
     if document.status == DocumentStatus.REFUSED:
         return {
             "message": "Devis déjà refusé",
@@ -789,30 +627,27 @@ async def refuse_document_as_client(
             "refused_at": document.refused_at,
             "already_refused": True,
         }
-    
+
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
             detail=f"Ce document ne peut pas être refusé (statut: {document.status.value})"
         )
-    
-    # Mettre à jour
+
     document.status = DocumentStatus.REFUSED
     document.refused_at = to_naive_utc(datetime.now(timezone.utc))
     document.refusal_reason = data.reason
-    
+
     db.add(document)
     await db.commit()
-    
+
     logger.info(f"❌ Devis {document.id} refusé")
-    
-    # ✅ NOTIFIER - avec gestion d'erreur pour ne pas bloquer la réponse
+
     try:
         await NotificationService.notify_document_refused(document.id, db)
     except Exception as e:
         logger.error(f"❌ Erreur lors de la notification: {e}", exc_info=True)
-        # On ne bloque pas la réponse si la notification échoue
-    
+
     return {
         "message": "Devis refusé",
         "status": document.status,
@@ -820,50 +655,46 @@ async def refuse_document_as_client(
         "already_refused": False,
     }
 
+
 @router.post("/shared/{token}/refuse")
 async def refuse_shared_document(
     token: str,
     data: RefuseDocumentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Le client refuse le document via le lien public."""
     logger.info(f"❌ POST /documents/shared/{token[:8]}.../refuse")
-    
-    # Récupérer le document
+
     result = await db.execute(
         select(Document).where(Document.share_token == token)
     )
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
-    
-    # Vérifier expiration
+
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
-    
-    # Vérifier que le document peut être refusé
+
     if document.status not in [DocumentStatus.SENT, DocumentStatus.VIEWED]:
         raise HTTPException(
             status_code=400,
             detail=f"Ce document ne peut pas être refusé (statut actuel: {document.status})"
         )
-    
-    # Mettre à jour le document
+
     document.status = DocumentStatus.REFUSED
     document.refused_at = to_naive_utc(datetime.now(timezone.utc))
     document.refusal_reason = data.reason
-    
+
     db.add(document)
     await db.commit()
-    
+
     logger.info(f"❌ Document {document.id} refusé. Raison: {data.reason}")
-    
+
     return {
         "message": "Document refusé",
         "status": document.status,
@@ -871,43 +702,49 @@ async def refuse_shared_document(
     }
 
 
+# ============================================================
+# 📄 VISUALISATION PUBLIQUE & CLIENT
+# ============================================================
+
 @router.get("/shared/{token}", response_model=SharedDocumentRead)
 async def get_shared_document_public(
     token: str,
     db: AsyncSession = Depends(get_db),
-    
 ):
     """Page PUBLIQUE : Visualisation uniquement (lecture seule)."""
     logger.info(f"👁️ GET /documents/shared/{token[:8]}... (public)")
-    
+
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner), selectinload(Document.payment_schedule),)
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner),
+            selectinload(Document.payment_schedule),
+        )
         .where(Document.share_token == token)
     )
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
-    
-    # Vérifier expiration
+
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
-    
-    # Marquer comme vu
+
     if document.status == DocumentStatus.SENT and not document.viewed_at:
         document.status = DocumentStatus.VIEWED
         document.viewed_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(document)
         await db.commit()
-    
+
     totals = DocumentService.calculate_totals(document.items)
-    
+
     return {
         "id": document.id,
         "type": document.type,
@@ -921,18 +758,15 @@ async def get_shared_document_public(
         "subtotal_cents": totals["subtotal_cents"],
         "tax_total_cents": totals["tax_total_cents"],
         "grand_total_cents": totals["grand_total_cents"],
-        # Style
         "primary_color": document.primary_color,
         "secondary_color": document.secondary_color,
         "accent_color": document.accent_color,
         "background_color": document.background_color,
         "text_color": document.text_color,
         "font_family": document.font_family,
-        # Infos entreprise
         "company_name": getattr(document.owner, 'company_name', None) if document.owner else None,
         "company_email": getattr(document.owner, 'email', None) if document.owner else None,
         "company_phone": getattr(document.owner, 'phone', None) if document.owner else None,
-        # Infos client
         "client_name": document.client.name if document.client else None,
         "client_email": document.client.email if document.client else None,
         "payment_schedule": [
@@ -951,9 +785,9 @@ async def get_shared_document_public(
                 key=lambda x: x.sequence
             )
         ],
-        # ✅ PAS d'actions de validation possibles ici
         "can_validate": False,
     }
+
 
 @router.get("/client/{token}", response_model=SharedDocumentRead)
 async def get_document_for_client(
@@ -962,36 +796,38 @@ async def get_document_for_client(
 ):
     """Page PRIVÉE CLIENT : Visualisation + Actions (accepter/refuser)."""
     logger.info(f"🔐 GET /documents/client/{token[:8]}... (privé)")
-    
+
     result = await db.execute(
         select(Document)
-        .options(selectinload(Document.items), selectinload(Document.client), selectinload(Document.owner),selectinload(Document.payment_schedule))
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner),
+            selectinload(Document.payment_schedule),
+        )
         .where(Document.client_token == token)
     )
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if not document.share_enabled:
         raise HTTPException(status_code=403, detail="Partage désactivé")
-    
-    # Vérifier expiration
+
     if document.share_expires_at:
         now = to_naive_utc(datetime.now(timezone.utc))
         if now > document.share_expires_at:
             raise HTTPException(status_code=410, detail="Lien expiré")
-    
+
     totals = DocumentService.calculate_totals(document.items)
-    
-    # ✅ Déterminer si le client peut valider
+
     can_validate = document.type == DocumentType.DEVIS and document.status in [
         DocumentStatus.SENT,
         DocumentStatus.VIEWED
     ]
-    
+
     return {
-        # ... mêmes champs que la page publique ...
         "id": document.id,
         "type": document.type,
         "status": document.status,
@@ -1015,7 +851,6 @@ async def get_document_for_client(
         "company_phone": getattr(document.owner, 'phone', None) if document.owner else None,
         "client_name": document.client.name if document.client else None,
         "client_email": document.client.email if document.client else None,
-        # ✅ ICI le client peut valider
         "can_validate": True,
         "payment_schedule": [
             {
@@ -1038,7 +873,200 @@ async def get_document_for_client(
         "signature_name": document.signature_name,
     }
 
-# app/api/v1/document.py - À ajouter
+
+# ═══════════════════════════════════════════════════════════
+# 🧾 FACTURE PUBLIQUE (avec échéancier du devis parent)
+# ═══════════════════════════════════════════════════════════
+@router.get("/invoices/public/{token}")
+async def get_public_invoice(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Vue PUBLIQUE d'une facture avec échéancier interactif.
+    Accessible via share_token ou client_token.
+    """
+    logger.info(f"🧾 GET /invoices/public/{token[:8]}...")
+
+    # Chercher par share_token OU client_token
+    result = await db.execute(
+        select(Document)
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner),
+        )
+        .where(
+            (Document.share_token == token) | (Document.client_token == token)
+        )
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+
+    if document.type != DocumentType.FACTURE:
+        raise HTTPException(
+            status_code=400,
+            detail="Cet endpoint est réservé aux factures"
+        )
+
+    # Marquer comme vue si envoyé + première consultation
+    if document.status == DocumentStatus.SENT and not document.viewed_at:
+        document.status = DocumentStatus.VIEWED
+        document.viewed_at = to_naive_utc(datetime.now(timezone.utc))
+        db.add(document)
+
+    # Construire l'échéancier du devis parent
+    schedule_context = await _build_public_schedule_context(db, document)
+
+    totals = DocumentService.calculate_totals(document.items)
+
+    await db.commit()
+
+    return {
+        # ─── Document ───
+        "document": {
+            "id": str(document.id),
+            "type": document.type.value if hasattr(document.type, "value") else str(document.type),
+            "status": document.status.value if hasattr(document.status, "value") else str(document.status),
+            "number": document.number,
+            "created_at": document.created_at.isoformat() if document.created_at else None,
+            "due_date": document.due_date.isoformat() if document.due_date else None,
+            "notes": document.notes,
+            "layout_style": document.layout_style,
+        },
+        # ─── Client ───
+        "client": {
+            "name": document.client.name if document.client else None,
+            "email": document.client.email if document.client else None,
+            "phone": getattr(document.client, "phone", None) if document.client else None,
+            "address": document.client.address if document.client else None,
+        } if document.client else None,
+        # ─── Émetteur (pro) ───
+        "company": {
+            "name": getattr(document.owner, "company_name", None) if document.owner else None,
+            "email": getattr(document.owner, "email", None) if document.owner else None,
+            "phone": getattr(document.owner, "phone", None) if document.owner else None,
+            "address": getattr(document.owner, "address", None) if document.owner else None,
+            "tax_id": getattr(document.owner, "tax_id", None) if document.owner else None,
+            "payment_info": getattr(document.owner, "payment_info", None) if document.owner else None,
+        } if document.owner else None,
+        # ─── Items ───
+        "items": [
+            {
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price_cents": item.unit_price_cents,
+                "tax_rate": item.tax_rate,
+                "total_cents": item.quantity * item.unit_price_cents,
+            }
+            for item in (document.items or [])
+        ],
+        # ─── Totaux ───
+        "totals": {
+            "subtotal_cents": totals["subtotal_cents"],
+            "tax_total_cents": totals["tax_total_cents"],
+            "grand_total_cents": totals["grand_total_cents"],
+        },
+        # ─── Style ───
+        "primary_color": document.primary_color or "#2563EB",
+        "secondary_color": document.secondary_color or "#1E40AF",
+        "accent_color": document.accent_color or "#DBEAFE",
+        "background_color": document.background_color or "#FFFFFF",
+        "text_color": document.text_color or "#1F2937",
+        "font_family": document.font_family or "Inter",
+        "currency": getattr(document.owner, "currency", "XOF") if document.owner else "XOF",
+        # ─── Échéancier ───
+        **schedule_context,
+    }
+
+
+async def _build_public_schedule_context(db: AsyncSession, document: Document) -> dict:
+    """
+    Construit le contexte 'Suivi de paiement' pour la vue publique d'une facture.
+    Remonte au devis parent et lit son échéancier.
+    """
+    empty = {
+        "payment_schedule": None,
+        "has_schedule": False,
+    }
+
+    # Uniquement pour les factures rattachées à un devis
+    if document.type != DocumentType.FACTURE or not document.source_document_id:
+        return empty
+
+    # Charger le devis parent avec son échéancier
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.payment_schedule))
+        .where(Document.id == document.source_document_id)
+    )
+    quote = result.scalar_one_or_none()
+
+    if not quote:
+        return empty
+
+    milestones = list(quote.payment_schedule or [])
+
+    # Pas d'affichage si pas d'échéancier ou une seule tranche (100%)
+    if not milestones or len(milestones) < 2:
+        return empty
+
+    # Trier par sequence
+    milestones_sorted = sorted(milestones, key=lambda m: m.sequence)
+
+    # Calcul des totaux
+    total_cents = sum(m.amount_cents or 0 for m in milestones_sorted)
+    paid_cents = sum(
+        m.amount_cents or 0
+        for m in milestones_sorted
+        if (
+            (hasattr(m.status, "value") and m.status.value == "PAID")
+            or (isinstance(m.status, str) and m.status == "PAID")
+        )
+    )
+
+    rows = []
+    for m in milestones_sorted:
+        status_str = m.status.value if hasattr(m.status, "value") else str(m.status)
+        rows.append({
+            "sequence": m.sequence,
+            "title": m.title,
+            "percent": m.percent,
+            "amount_cents": m.amount_cents or 0,
+            "status": status_str,
+            "paid_at": m.paid_at.isoformat() if m.paid_at else None,
+            "trigger_date": m.trigger_date.isoformat() if m.trigger_date else None,
+            "is_current": m.invoice_id == document.id,
+        })
+
+    paid_percent = int(round(paid_cents / total_cents * 100)) if total_cents else 0
+
+    return {
+        "payment_schedule": {
+            "milestones": rows,
+            "total_cents": total_cents,
+            "paid_cents": paid_cents,
+            "paid_percent": paid_percent,
+            "remaining_cents": total_cents - paid_cents,
+            "source_quote_number": quote.number,
+        },
+        "has_schedule": True,
+    }
+
+
+# ============================================================
+# 📄 GÉNÉRATION DE FACTURES & PAIEMENT
+# ============================================================
 
 @router.post("/{document_id}/next-invoice", response_model=dict)
 async def generate_next_invoice(
@@ -1046,32 +1074,20 @@ async def generate_next_invoice(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Génère la facture de la prochaine milestone d'un devis accepté.
-    
-    Conditions :
-    - Le devis doit être ACCEPTED
-    - Le devis doit avoir un échéancier
-    - La précédente milestone doit être PAYÉE (sauf pour la 1ère)
-    - Il doit rester au moins une milestone PENDING
-    """
     from app.services.invoiceService import InvoiceService
-    from app.models.payment_schedule import PaymentSchedule, MilestoneStatus
-    
+
     logger.info(f"💰 POST /documents/{document_id}/next-invoice")
-    
-    # 1. Charger le devis
+
     quote = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not quote:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if quote.type != DocumentType.DEVIS:
         raise HTTPException(status_code=400, detail="Seuls les devis supportent cette action")
-    
+
     if quote.status != DocumentStatus.ACCEPTED:
         raise HTTPException(status_code=400, detail="Le devis doit être accepté")
-    
-    # 2. Charger les milestones
+
     stmt = (
         select(PaymentSchedule)
         .where(PaymentSchedule.document_id == quote.id)
@@ -1079,17 +1095,15 @@ async def generate_next_invoice(
     )
     result = await db.execute(stmt)
     milestones = list(result.scalars().all())
-    
+
     if not milestones:
         raise HTTPException(status_code=400, detail="Ce devis n'a pas d'échéancier")
-    
-    # 3. Trouver la prochaine milestone à facturer
+
     next_milestone = None
-    
+
     for milestone in milestones:
         if milestone.status == MilestoneStatus.PENDING:
-            # C'est la prochaine - mais on vérifie que la précédente est payée
-            prev_index = milestone.sequence - 2  # sequence commence à 1
+            prev_index = milestone.sequence - 2
             if prev_index >= 0:
                 prev_milestone = milestones[prev_index]
                 if prev_milestone.status != MilestoneStatus.PAID:
@@ -1099,14 +1113,13 @@ async def generate_next_invoice(
                     )
             next_milestone = milestone
             break
-    
+
     if not next_milestone:
         raise HTTPException(
             status_code=400,
             detail="Toutes les milestones ont déjà été facturées"
         )
-    
-    # 4. Générer la facture
+
     try:
         invoice = await InvoiceService.create_from_milestone(
             db=db,
@@ -1114,20 +1127,19 @@ async def generate_next_invoice(
             milestone=next_milestone,
             origin="manual",
         )
-        
-        # 5. Marquer la milestone comme INVOICED
+
         next_milestone.status = MilestoneStatus.INVOICED
         next_milestone.invoice_id = invoice.id
         next_milestone.invoiced_at = to_naive_utc(datetime.now(timezone.utc))
         db.add(next_milestone)
-        
+
         await db.commit()
-        
+
         logger.info(
             f"✅ Facture {invoice.number} créée pour milestone "
             f"'{next_milestone.title}' ({next_milestone.percent}%)"
         )
-        
+
         return {
             "message": f"Facture {invoice.number} créée ({next_milestone.title})",
             "invoice_id": str(invoice.id),
@@ -1154,53 +1166,39 @@ async def mark_invoice_as_paid(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Marque une facture comme payée.
-    Si la facture est liée à une milestone, marque aussi la milestone comme PAID.
-    """
     logger.info(f"💳 POST /invoices/{invoice_id}/mark-paid")
-    
+
     invoice = await DocumentService.get_by_id(db, invoice_id, current_user.id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Facture introuvable")
-    
+
     if invoice.type != DocumentType.FACTURE:
         raise HTTPException(status_code=400, detail="Ce document n'est pas une facture")
-    
+
     if invoice.status == DocumentStatus.PAID:
         return {
             "message": "Facture déjà payée",
             "already_paid": True,
         }
-    
-    # Marquer la facture comme payée
+
     now = to_naive_utc(datetime.now(timezone.utc))
     invoice.status = DocumentStatus.PAID
-    invoice.paid_at = now  # ✅ NOUVEAU
+    invoice.paid_at = now
     db.add(invoice)
 
-    
-    
-    
-    # Chercher si une milestone est liée à cette facture
     stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
     result = await db.execute(stmt)
     milestone = result.scalar_one_or_none()
 
-    
-    stmt = select(PaymentSchedule).where(PaymentSchedule.invoice_id == invoice_id)
-    result = await db.execute(stmt)
-    milestone = result.scalar_one_or_none()
-    
     if milestone:
         milestone.status = MilestoneStatus.PAID
-        milestone.paid_at = to_naive_utc(datetime.now(timezone.utc))
+        milestone.paid_at = now
         db.add(milestone)
         logger.info(f"✅ Milestone '{milestone.title}' marquée comme PAID")
-    
+
     await db.commit()
     await db.refresh(invoice)
-    
+
     return {
         "message": f"Facture {invoice.number} marquée comme payée",
         "invoice_number": invoice.number,
@@ -1209,26 +1207,29 @@ async def mark_invoice_as_paid(
         "already_paid": False,
     }
 
+
+# ============================================================
+# 📄 PDF & PREVIEW pour documents sauvegardés
+# ============================================================
+
 @router.get("/{document_id}/pdf")
 async def get_document_pdf(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Générer le PDF d'un document sauvegardé."""
-    logger.info(f"📄 GET /{document_id}/pdf - layout_style: {getattr(document_id, 'layout_style', 'unknown')}")
-    
+    logger.info(f"📄 GET /{document_id}/pdf")
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
 
-    from app.services.clientService import ClientService
     client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
 
     template = await _get_document_template(db, document, current_user)
-    
+
     logger.info(f"📄 Template layout_style: {template.layout_style}")
 
     pdf_buffer = await pdf_renderer.render_pdf(
@@ -1253,12 +1254,10 @@ async def preview_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Aperçu HTML d'un document sauvegardé."""
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
 
-    from app.services.clientService import ClientService
     client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
@@ -1270,7 +1269,7 @@ async def preview_document(
         template=template,
         user=current_user,
         client=client,
-        db=db,  # ← AJOUTÉ pour source_quote_number
+        db=db,
     )
     return HTMLResponse(content=html_content)
 
@@ -1285,9 +1284,8 @@ async def get_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Récupérer les détails d'un document."""
     logger.info(f"🔍 GET /{document_id} - user: {current_user.id}")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         logger.warning(f"⚠️ Document {document_id} non trouvé pour user {current_user.id}")
@@ -1307,21 +1305,18 @@ async def update_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mise à jour complète d'un document."""
     logger.info(f"🔄 PUT /{document_id}")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
 
     if document_data.client_id is not None:
-        from app.services.clientService import ClientService
         client = await ClientService.get_by_id(db, document_data.client_id, current_user.id)
         if not client:
             raise HTTPException(status_code=404, detail="Client introuvable")
 
     if document_data.payment_schedule is not None:
-        from app.services.paymentScheduleService import PaymentScheduleService
         try:
             await PaymentScheduleService.set_schedule(
                 db,
@@ -1330,6 +1325,7 @@ async def update_document(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
     try:
         updated = await DocumentService.update_document(
             db=db,
@@ -1340,7 +1336,6 @@ async def update_document(
             due_date=document_data.due_date,
             items=[item.model_dump() for item in document_data.items] if document_data.items else None,
             notes=document_data.notes,
-            # ✅ NOUVEAU : Passer les champs de style
             primary_color=document_data.primary_color,
             secondary_color=document_data.secondary_color,
             accent_color=document_data.accent_color,
@@ -1364,7 +1359,6 @@ async def update_document_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Changer le statut d'un document."""
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(
@@ -1388,8 +1382,6 @@ async def update_document_status(
     return _enrich_document(updated, totals)
 
 
-# app/api/v1/document.py
-
 @router.patch("/{document_id}/project", response_model=DocumentRead)
 async def link_document_to_project(
     document_id: UUID,
@@ -1397,14 +1389,12 @@ async def link_document_to_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Associer un document à un projet (ou retirer l'association)."""
     logger.info(f"🔗 PATCH /documents/{document_id}/project")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
-    # Vérifier que le projet (si fourni) appartient à l'utilisateur
+
     if link_data.project_id:
         from app.models.projet import Project
         project_result = await db.execute(
@@ -1418,17 +1408,17 @@ async def link_document_to_project(
                 status_code=404,
                 detail="Projet introuvable ou n'appartient pas à cet utilisateur"
             )
-    
-    # Mettre à jour le project_id
+
     document.project_id = link_data.project_id
     db.add(document)
     await db.commit()
     await db.refresh(document)
-    
+
     logger.info(f"✅ Document {document_id} associé au projet {link_data.project_id}")
-    
+
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
+
 
 @router.delete("/{document_id}/project", response_model=DocumentRead)
 async def unlink_document_from_project(
@@ -1436,27 +1426,25 @@ async def unlink_document_from_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Dissocier un document de son projet."""
     logger.info(f" DELETE /documents/{document_id}/project")
-    
+
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    
+
     if not document.project_id:
         raise HTTPException(
             status_code=400,
             detail="Ce document n'est pas associé à un projet"
         )
-    
-    # Dissocier le document
+
     document.project_id = None
     db.add(document)
     await db.commit()
     await db.refresh(document)
-    
+
     logger.info(f"✅ Document {document_id} dissocié du projet")
-    
+
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
 
@@ -1467,7 +1455,6 @@ async def convert_to_invoice(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Convertir un devis en facture."""
     document = await DocumentService.get_by_id(db, document_id, current_user.id)
     if not document:
         raise HTTPException(
@@ -1493,7 +1480,6 @@ async def delete_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Supprimer un document."""
     try:
         await DocumentService.delete_document(db, document_id, current_user.id)
     except ValueError as e:
@@ -1502,55 +1488,156 @@ async def delete_document(
             detail=str(e),
         )
 
+
+@router.get("/client/{token}/preview", response_class=HTMLResponse)
+async def preview_document_for_client(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aperçu HTML d'un document pour le client (pas d'authentification requise).
+    Utilisé sur la page /client/{token} pour afficher le rendu du document.
+    """
+    logger.info(f"👁️ GET /client/{token[:8]}.../preview (public)")
+
+    # 1. Charger le document via le token client
+    result = await db.execute(
+        select(Document)
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner),
+            selectinload(Document.payment_schedule),
+        )
+        .where(Document.client_token == token)
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+
+    # 2. Récupérer le template
+    template = await _get_document_template(db, document, document.owner)
+
+    # 3. Rendre le HTML (avec suivi de paiement pour les factures)
+    html_content = await pdf_renderer.render_html(
+        document=document,
+        template=template,
+        user=document.owner,
+        client=document.client,
+        db=db,
+    )
+
+    return HTMLResponse(content=html_content)
+
+@router.get("/shared/{token}/preview", response_class=HTMLResponse)
+async def preview_shared_document(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aperçu HTML d'un document partagé (lien public, sans auth).
+    """
+    logger.info(f"👁️ GET /shared/{token[:8]}.../preview (public)")
+
+    result = await db.execute(
+        select(Document)
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.client),
+            selectinload(Document.owner),
+            selectinload(Document.payment_schedule),
+        )
+        .where(Document.share_token == token)
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+
+    if not document.share_enabled:
+        raise HTTPException(status_code=403, detail="Partage désactivé")
+
+    if document.share_expires_at:
+        now = to_naive_utc(datetime.now(timezone.utc))
+        if now > document.share_expires_at:
+            raise HTTPException(status_code=410, detail="Lien expiré")
+
+    template = await _get_document_template(db, document, document.owner)
+
+    html_content = await pdf_renderer.render_html(
+        document=document,
+        template=template,
+        user=document.owner,
+        client=document.client,
+        db=db,
+    )
+
+    return HTMLResponse(content=html_content)
 # ============================================================
-# 📄 LISTE ET CRÉATION
+# 📄 PREVIEW PNG
 # ============================================================
+
 @router.get("/{document_id}/preview.png")
 async def get_document_preview_png(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Génère une image PNG de preview d'un document sauvegardé."""
+    """Génère (ou sert depuis le cache) la preview PNG d'un document."""
     logger.info(f"🖼️ GET /{document_id}/preview.png")
-    
-    document = await DocumentService.get_by_id(db, document_id, current_user.id)
+
+    # ✅ Charger avec items + schedule (nécessaires pour le hash de cache)
+    result = await db.execute(
+        select(Document)
+        .options(
+            selectinload(Document.items),
+            selectinload(Document.payment_schedule),
+        )
+        .where(Document.id == document_id, Document.user_id == current_user.id)
+    )
+    document = result.scalar_one_or_none()
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
 
-    from app.services.clientService import ClientService
     client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
 
     template = await _get_document_template(db, document, current_user)
-    
-    logger.info(f"🖼️ Template layout_style: {template.layout_style}")
 
-    # Générer le HTML
-    html_content = await pdf_renderer.render_html(
+    # ✅ Passe par le cache intelligent
+    png_bytes = await pdf_renderer.get_or_render_document_png(
+        db=db,
         document=document,
         template=template,
         user=current_user,
         client=client,
-        db=db,  # ← AJOUTÉ pour source_quote_number
     )
-
-    # Générer le PNG
-    png_bytes = await pdf_renderer.render_png_from_html(html_content)
 
     return Response(
         content=png_bytes,
         media_type="image/png",
         headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Content-Disposition": f'inline; filename="preview-{document_id}.png"'
-        }
+            # Cache navigateur court : le cache serveur fait le gros du travail
+            "Cache-Control": "private, max-age=30, must-revalidate",
+            "Content-Disposition": f'inline; filename="preview-{document_id}.png"',
+        },
     )
 
-    
+
+# ============================================================
+# 📄 LISTE ET CRÉATION
+# ============================================================
+
 @router.get("/", response_model=list[DocumentListRead])
 async def list_documents(
     type: Optional[DocumentType] = Query(None),
@@ -1562,7 +1649,6 @@ async def list_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Liste les documents."""
     documents = await DocumentService.get_all(
         db=db,
         user_id=current_user.id,
@@ -1608,18 +1694,14 @@ async def create_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Créer un nouveau devis ou facture."""
     logger.info(f"✨ POST / - Création document, layout: {document_data.layout_style}")
-    
-    from app.services.clientService import ClientService
+
     from app.models.client import Client
     from app.models.projet import Project
-    
-    # Déterminer le client
+
     client_id = document_data.client_id
-    
+
     if not client_id:
-        # Si un projet est fourni, utiliser le client du projet
         if document_data.project_id:
             project_result = await db.execute(
                 select(Project).where(
@@ -1631,8 +1713,7 @@ async def create_document(
             if project:
                 client_id = project.client_id
                 logger.info(f"📋 Client récupéré depuis le projet: {client_id}")
-        
-        # Sinon, prendre le premier client de l'utilisateur
+
         if not client_id:
             result = await db.execute(
                 select(Client)
@@ -1640,25 +1721,23 @@ async def create_document(
                 .limit(1)
             )
             first_client = result.scalar_one_or_none()
-            
+
             if not first_client:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Aucun client trouvé. Veuillez créer un client avant de créer un devis."
                 )
-            
+
             client_id = first_client.id
             logger.info(f"📋 Premier client utilisé: {first_client.name}")
     else:
-        # Vérifier que le client appartient à l'utilisateur
         client = await ClientService.get_by_id(db, client_id, current_user.id)
         if not client:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Client introuvable"
             )
-    
-    # ✅ Vérifier que le projet (si fourni) appartient à l'utilisateur
+
     if document_data.project_id:
         project_result = await db.execute(
             select(Project).where(
@@ -1684,7 +1763,6 @@ async def create_document(
             due_date=document_data.due_date,
             notes=document_data.notes,
             document_id=document_data.id,
-            # ✅ NOUVEAU : Passer le project_id
             project_id=document_data.project_id,
         )
         if document_data.payment_schedule:
@@ -1694,7 +1772,6 @@ async def create_document(
                     document,
                     [m.model_dump() for m in document_data.payment_schedule],
                 )
-
                 await db.commit()
                 await db.refresh(document, ['items', 'payment_schedule'])
             except ValueError as e:
@@ -1706,7 +1783,7 @@ async def create_document(
     document = await DocumentService.get_by_id(db, document.id, current_user.id)
     if not document:
         raise HTTPException(status_code=500, detail="Document créé mais non récupérable")
-    
+
     totals = DocumentService.calculate_totals(document.items)
     return _enrich_document(document, totals)
 
@@ -1716,7 +1793,6 @@ async def create_document(
 # ============================================================
 
 def _enrich_document(doc, totals: dict) -> dict:
-    """Ajoute les totaux calculés au document."""
     return {
         "id": doc.id,
         "type": doc.type,
@@ -1732,14 +1808,12 @@ def _enrich_document(doc, totals: dict) -> dict:
             "phone": doc.client.phone if doc.client else None,
             "address": doc.client.address if doc.client else None,
         } if doc.client else None,
-        
         "client_id": doc.client_id,
         "template_id": doc.template_id,
         "layout_style": getattr(doc, 'layout_style', 'classic'),
         "notes": doc.notes,
         "items": doc.items,
         "project_id": getattr(doc, 'project_id', None),
-        # ✅ NOUVEAU : Retourner les couleurs
         "primary_color": getattr(doc, 'primary_color', '#2563EB'),
         "secondary_color": getattr(doc, 'secondary_color', '#1E40AF'),
         "accent_color": getattr(doc, 'accent_color', '#DBEAFE'),
@@ -1767,7 +1841,6 @@ def _enrich_document(doc, totals: dict) -> dict:
                 key=lambda x: x.sequence
             )
         ],
-        # Totaux
         "subtotal_cents": totals["subtotal_cents"],
         "tax_total_cents": totals["tax_total_cents"],
         "grand_total_cents": totals["grand_total_cents"],
@@ -1775,7 +1848,6 @@ def _enrich_document(doc, totals: dict) -> dict:
 
 
 async def _get_document_template(db: AsyncSession, document, user: User):
-    """Récupère le template du document."""
     if document.template_id:
         tmpl = await TemplateService.get_by_id(db, document.template_id, user.id)
         if tmpl:
