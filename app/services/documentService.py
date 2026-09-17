@@ -577,6 +577,7 @@ class DocumentService:
             raise ValueError("Seuls les brouillons peuvent être supprimés")
         await db.delete(document)
         await db.commit()
+        pdf_renderer.invalidate_document_cache(document_id)
 
     @staticmethod
     async def duplicate_as_invoice(db, document):

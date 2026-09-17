@@ -1,5 +1,6 @@
 # app/main.py
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
 from app.db.engine import async_session  # ⚠️ adapte selon ton chemin
 from app.services.overdueService import OverdueService
+from app.services.pdfRenderer import pdf_renderer
 
 # Routers
 from app.api.v1.auth import router as auth_router
@@ -57,12 +59,16 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     logger.info("⏰ Scheduler démarré (OVERDUE à 00:05 UTC)")
+
+    # Préchauffer Chromium pour un rendu PNG/PDF immédiat
+    asyncio.create_task(pdf_renderer.warmup())
     
     yield
     
     # ===== SHUTDOWN =====
     logger.info("🛑 Arrêt de Sharaco API")
     scheduler.shutdown()
+    await pdf_renderer.close()
 
 
 # ═══════════════════════════════════════════════════════════════

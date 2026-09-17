@@ -2,9 +2,12 @@
 import os
 import hashlib
 import json
+import asyncio
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+from collections import OrderedDict
 from io import BytesIO
+from jinja2 import Environment, FileSystemLoader
+from PIL import Image
 from playwright.async_api import async_playwright
 from sqlmodel import select
 from app.core.currency import get_currency_symbol
@@ -23,9 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 class PDFRenderer:
-    """Moteur de rendu HTML/PDF pour les devis et factures."""
+    """Moteur de rendu HTML/PDF/PNG haute performance pour les devis et factures."""
 
     TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+    CACHE_DIR = Path(__file__).parent.parent.parent / "storage" / "cache" / "previews"
+    MAX_MEMORY_CACHE = 256
 
     QUOTE_LAYOUT_MAP = {
         "classic": "classic.html",
@@ -47,8 +52,68 @@ class PDFRenderer:
             autoescape=True,
             cache_size=100,
         )
-        self._preview_cache: dict[str, bytes] = {}           # templates génériques
-        self._document_preview_cache: dict[str, bytes] = {}  # ✅ previews documents (cache intelligent)
+        self._preview_cache: dict[str, bytes] = {}
+        self._memory_cache: OrderedDict[str, bytes] = OrderedDict()
+        self._document_preview_cache = self._memory_cache  # Rétrocompatibilité
+
+        # Playwright persistent instance
+        self._playwright = None
+        self._browser = None
+        self._browser_lock = asyncio.Lock()
+        self._render_semaphore = asyncio.Semaphore(4)
+        self._inflight_renders: dict[str, asyncio.Future] = {}
+
+    async def _ensure_browser(self):
+        """Initialise ou retourne l'instance Chromium persistante."""
+        if self._browser is not None and self._browser.is_connected():
+            return self._browser
+
+        async with self._browser_lock:
+            if self._browser is not None and self._browser.is_connected():
+                return self._browser
+
+            if self._playwright is None:
+                self._playwright = await async_playwright().start()
+
+            self._browser = await self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-extensions",
+                    "--disable-background-networking",
+                    "--no-first-run",
+                ],
+            )
+            logger.info("🚀 Chromium persistant prêt pour PDFRenderer")
+            return self._browser
+
+    async def warmup(self):
+        """Préchauffe le navigateur Playwright au démarrage de l'application."""
+        try:
+            await self._ensure_browser()
+            logger.info("⚡ Navigateur Chromium préchauffé avec succès")
+        except Exception as e:
+            logger.warning(f"⚠️ Échec du préchauffage Chromium: {e}")
+
+    async def close(self):
+        """Ferme proprement Chromium et Playwright lors du shutdown."""
+        async with self._browser_lock:
+            if self._browser is not None:
+                try:
+                    await self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+            if self._playwright is not None:
+                try:
+                    await self._playwright.stop()
+                except Exception:
+                    pass
+                self._playwright = None
+            logger.info("🛑 Chromium PDFRenderer fermé")
 
     def _get_layout_file(self, layout_style: str, doc_type: DocumentType) -> str:
         if doc_type == DocumentType.FACTURE:
@@ -75,24 +140,133 @@ class PDFRenderer:
         }
 
     # ═══════════════════════════════════════════════════════════
+    # CACHE DISQUE & MÉMOIRE
+    # ═══════════════════════════════════════════════════════════
+
+    MAX_DISK_CACHE_FILES = 500
+
+    def _read_from_disk_cache(self, cache_key: str) -> bytes | None:
+        try:
+            path = self.CACHE_DIR / f"{cache_key}.png"
+            if path.exists():
+                # Met à jour l'heure d'accès pour la politique LRU
+                os.utime(path, None)
+                return path.read_bytes()
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lecture cache disque ({cache_key}): {e}")
+        return None
+
+    def _cleanup_old_document_versions(self, document_id, current_hash: str):
+        """Supprime les anciennes versions du document sur disque et mémoire vive."""
+        prefix = f"{document_id}_"
+        # Nettoyage mémoire
+        for k in list(self._memory_cache.keys()):
+            if k.startswith(prefix) and current_hash not in k:
+                self._memory_cache.pop(k, None)
+
+        # Nettoyage disque
+        try:
+            if self.CACHE_DIR.exists():
+                for f in self.CACHE_DIR.glob(f"{document_id}_*.png"):
+                    if current_hash not in f.name:
+                        try:
+                            f.unlink()
+                        except OSError:
+                            pass
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur nettoyage anciens previews ({document_id}): {e}")
+
+    def _evict_disk_cache_if_needed(self):
+        """Empêche le dossier storage de se remplir : éviction LRU des fichiers les plus anciens."""
+        try:
+            if not self.CACHE_DIR.exists():
+                return
+            files = list(self.CACHE_DIR.glob("*.png"))
+            if len(files) > self.MAX_DISK_CACHE_FILES:
+                # Trie du plus ancien au plus récent
+                files.sort(key=lambda f: f.stat().st_mtime)
+                to_delete = files[:len(files) - self.MAX_DISK_CACHE_FILES]
+                for f in to_delete:
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                logger.info(f"🧹 Cache disque régulé: {len(to_delete)} anciens fichiers supprimés (quota {self.MAX_DISK_CACHE_FILES})")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur éviction cache disque: {e}")
+
+    def _write_to_disk_cache(self, cache_key: str, data: bytes):
+        try:
+            self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            path = self.CACHE_DIR / f"{cache_key}.png"
+            tmp_path = self.CACHE_DIR / f"{cache_key}.tmp.{uuid4().hex[:8]}"
+            tmp_path.write_bytes(data)
+            tmp_path.replace(path)
+            self._evict_disk_cache_if_needed()
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur écriture cache disque ({cache_key}): {e}")
+
+    def invalidate_document_cache(self, document_id):
+        """Supprime manuellement toutes les images en cache d'un document."""
+        prefix = f"{document_id}_"
+        for k in list(self._memory_cache.keys()):
+            if k.startswith(prefix):
+                self._memory_cache.pop(k, None)
+        try:
+            if self.CACHE_DIR.exists():
+                for f in self.CACHE_DIR.glob(f"{document_id}_*.png"):
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur invalidation cache document ({document_id}): {e}")
+
+    def _put_memory_cache(self, cache_key: str, data: bytes):
+        self._memory_cache[cache_key] = data
+        self._memory_cache.move_to_end(cache_key)
+        if len(self._memory_cache) > self.MAX_MEMORY_CACHE:
+            self._memory_cache.popitem(last=False)
+
+    @staticmethod
+    def _resize_png(png_bytes: bytes, target_width: int) -> bytes:
+        """Redimensionne une image PNG avec Pillow de façon optimisée."""
+        try:
+            with Image.open(BytesIO(png_bytes)) as img:
+                orig_w, orig_h = img.size
+                if orig_w <= target_width:
+                    return png_bytes
+                target_height = int(orig_h * (target_width / orig_w))
+                resized = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                out = BytesIO()
+                resized.save(out, format="PNG", optimize=True)
+                return out.getvalue()
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur redimensionnement PNG ({target_width}px): {e}")
+            return png_bytes
+
+    # ═══════════════════════════════════════════════════════════
     # ✅ CACHE INTELLIGENT (hash du contenu)
     # ═══════════════════════════════════════════════════════════
 
-    def _compute_render_hash(
+    def compute_render_hash(
         self,
         document: Document,
         template: DocumentTemplate,
         user: User,
         client: Client,
-        items: list,
-        schedule: list,
+        items: list = None,
+        schedule: list = None,
     ) -> str:
         """
-        Calcule un hash de TOUT ce qui influence le rendu visuel.
-        Si un seul de ces éléments change → hash différent → cache invalidé auto.
+        Calcule un hash MD5 de TOUT ce qui influence le rendu visuel.
+        Si un seul élément change → hash différent → nouvelle image automatiquement.
         """
         def _status(v):
             return v.value if hasattr(v, "value") else str(v)
+
+        doc_items = items if items is not None else (document.items or [])
+        doc_schedule = schedule if schedule is not None else (document.payment_schedule or [])
 
         payload = {
             # Document
@@ -100,6 +274,8 @@ class PDFRenderer:
                 "number": document.number,
                 "status": _status(document.status),
                 "type": _status(document.type),
+                "invoice_type": getattr(document, "invoice_type", None),
+                "source_id": str(getattr(document, "source_document_id", None)),
                 "layout": document.layout_style,
                 "notes": document.notes,
                 "due": document.due_date.isoformat() if document.due_date else None,
@@ -129,17 +305,21 @@ class PDFRenderer:
             # Lignes du document
             "items": [
                 [i.description, i.quantity, i.unit_price_cents, i.tax_rate]
-                for i in (items or [])
+                for i in (doc_items or [])
             ],
             # Échéancier (statuts + dates de paiement)
             "schedule": [
                 [m.sequence, m.title, m.percent, m.amount_cents, _status(m.status),
                  m.paid_at.isoformat() if m.paid_at else None]
-                for m in (schedule or [])
+                for m in (doc_schedule or [])
             ],
         }
         raw = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.md5(raw.encode()).hexdigest()
+
+    def _compute_render_hash(self, *args, **kwargs) -> str:
+        """Alias rétrocompatible pour compute_render_hash."""
+        return self.compute_render_hash(*args, **kwargs)
 
     async def get_or_render_document_png(
         self,
@@ -148,40 +328,88 @@ class PDFRenderer:
         template: DocumentTemplate,
         user: User,
         client: Client,
+        content_hash: str = None,
+        width: int | None = None,
     ) -> bytes:
         """
-        Retourne le PNG d'un document, depuis le cache si possible.
-        La clé de cache inclut un hash du contenu → toujours à jour, jamais périmée.
+        Retourne le PNG d'un document avec cache hybride (Mémoire LRU + Disque)
+        et déduplication des requêtes concurrentes (single-flight).
         """
         items = document.items or []
         schedule = document.payment_schedule or []
 
-        content_hash = self._compute_render_hash(document, template, user, client, items, schedule)
-        cache_key = f"{document.id}:{content_hash}"
+        if not content_hash:
+            content_hash = self.compute_render_hash(document, template, user, client, items, schedule)
 
-        # ✅ CACHE HIT : on renvoie directement (instantané)
-        if cache_key in self._document_preview_cache:
-            logger.info(f"⚡ Preview {document.id} servie depuis le cache")
-            return self._document_preview_cache[cache_key]
+        base_cache_key = f"{document.id}_{content_hash}"
+        cache_key = f"{base_cache_key}_w{width}" if width else base_cache_key
 
-        # ❌ CACHE MISS : on régénère
-        logger.info(f"🔄 Preview {document.id} régénérée (cache miss)")
-        html = await self.render_html(
-            document=document,
-            template=template,
-            user=user,
-            client=client,
-            db=db,
-        )
-        png = await self.render_png_from_html(html)
+        # 1️⃣ Niveau 1 : Mémoire vive (0ms)
+        if cache_key in self._memory_cache:
+            logger.info(f"⚡ Preview {document.id} servie depuis le cache mémoire ({cache_key})")
+            return self._memory_cache[cache_key]
 
-        # Stocke + limite la taille du cache (évite fuite mémoire)
-        self._document_preview_cache[cache_key] = png
-        if len(self._document_preview_cache) > 200:
-            for k in list(self._document_preview_cache.keys())[:100]:
-                self._document_preview_cache.pop(k, None)
+        # 2️⃣ Niveau 2 : Disque persistant (~1ms)
+        disk_bytes = self._read_from_disk_cache(cache_key)
+        if disk_bytes is not None:
+            logger.info(f"💾 Preview {document.id} servie depuis le cache disque ({cache_key})")
+            self._put_memory_cache(cache_key, disk_bytes)
+            return disk_bytes
 
-        return png
+        # Si un thumbnail est demandé et que l'original est déjà présent (en mémoire ou disque)
+        if width:
+            full_png = self._memory_cache.get(base_cache_key) or self._read_from_disk_cache(base_cache_key)
+            if full_png is not None:
+                resized_png = self._resize_png(full_png, width)
+                self._put_memory_cache(cache_key, resized_png)
+                self._write_to_disk_cache(cache_key, resized_png)
+                return resized_png
+
+        # 3️⃣ Single-flight : Attente si un rendu pour cette même clé est déjà en cours
+        loop = asyncio.get_running_loop()
+        if cache_key in self._inflight_renders:
+            logger.info(f"⏳ Preview {document.id} en attente du rendu parallèle...")
+            return await self._inflight_renders[cache_key]
+
+        future = loop.create_future()
+        self._inflight_renders[cache_key] = future
+
+        try:
+            logger.info(f"🔄 Preview {document.id} en cours de génération via Chromium...")
+            html = await self.render_html(
+                document=document,
+                template=template,
+                user=user,
+                client=client,
+                db=db,
+            )
+            raw_png = await self.render_png_from_html(html)
+
+            # Mise en cache de l'original pleine taille
+            self._put_memory_cache(base_cache_key, raw_png)
+            self._write_to_disk_cache(base_cache_key, raw_png)
+            # Supprime automatiquement les anciennes versions périmées de ce document
+            self._cleanup_old_document_versions(document.id, content_hash)
+
+            if width:
+                final_png = self._resize_png(raw_png, width)
+                self._put_memory_cache(cache_key, final_png)
+                self._write_to_disk_cache(cache_key, final_png)
+            else:
+                final_png = raw_png
+
+            if not future.done():
+                future.set_result(final_png)
+            return final_png
+
+        except Exception as e:
+            if not future.done():
+                future.set_exception(e)
+            raise
+        finally:
+            self._inflight_renders.pop(cache_key, None)
+
+    # ═══════════════════════════════════════════════════════════
 
     # ═══════════════════════════════════════════════════════════
     # CONTEXTE JINJA
@@ -413,25 +641,11 @@ class PDFRenderer:
         return self.render_html_preview(fake_doc, template, user, fake_client, currency)
 
     # ═══════════════════════════════════════════════════════════
-    # PLAYWRIGHT : screenshots & PDF
+    # PLAYWRIGHT : screenshots & PDF (Haute performance)
     # ═══════════════════════════════════════════════════════════
 
     async def _generate_screenshot(self, html_string: str) -> bytes:
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-                )
-                page = await browser.new_page(viewport={"width": 794, "height": 1123})
-                await page.set_content(html_string, wait_until="domcontentloaded")
-                await page.wait_for_timeout(800)
-                screenshot = await page.screenshot(full_page=True, type="png")
-                await browser.close()
-                return screenshot
-        except Exception as e:
-            logger.error(f"Erreur Playwright: {e}", exc_info=True)
-            raise
+        return await self.render_png_from_html(html_string)
 
     async def render_template_preview_png(
         self,
@@ -439,7 +653,7 @@ class PDFRenderer:
         currency: str = "FCFA",
     ) -> bytes:
         if layout_style in self._preview_cache:
-            logger.info(f"Preview {layout_style} servi depuis le cache")
+            logger.info(f"Preview template {layout_style} servi depuis le cache")
             return self._preview_cache[layout_style]
 
         try:
@@ -461,54 +675,81 @@ class PDFRenderer:
                 doc_type=DocumentType.DEVIS,
             )
 
-            screenshot = await self._generate_screenshot(html_string)
+            screenshot = await self.render_png_from_html(html_string)
             self._preview_cache[layout_style] = screenshot
-            logger.info(f"Preview {layout_style} généré et mis en cache")
+            logger.info(f"Preview template {layout_style} généré et mis en cache")
             return screenshot
 
         except Exception as e:
-            logger.error(f"Erreur génération preview PNG: {e}", exc_info=True)
+            logger.error(f"Erreur génération preview template PNG: {e}", exc_info=True)
             raise
 
     async def render_png_from_html(self, html_string: str) -> bytes:
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
-                )
-                page = await browser.new_page(viewport={"width": 794, "height": 1123})
-                await page.set_content(html_string, wait_until="domcontentloaded")
-                await page.wait_for_timeout(500)
+        """Génère un PNG depuis une chaîne HTML en réutilisant le navigateur Chromium."""
+        async with self._render_semaphore:
+            browser = await self._ensure_browser()
+            context = await browser.new_context(
+                viewport={"width": 794, "height": 1123},
+                device_scale_factor=1,
+            )
+            page = await context.new_page()
+            try:
+                await page.set_content(html_string, wait_until="load")
+                try:
+                    await page.evaluate("document.fonts.ready")
+                except Exception:
+                    pass
                 screenshot = await page.screenshot(full_page=True, type="png")
-                await browser.close()
                 return screenshot
-        except Exception as e:
-            logger.error(f"Erreur génération PNG depuis HTML: {e}", exc_info=True)
-            raise
+            except Exception as e:
+                if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+                    self._browser = None
+                logger.error(f"Erreur génération PNG depuis HTML: {e}", exc_info=True)
+                raise
+            finally:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+                try:
+                    await context.close()
+                except Exception:
+                    pass
 
     async def render_pdf_from_html(self, html_string: str) -> BytesIO:
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
-                )
-                page = await browser.new_page()
-                await page.set_content(html_string, wait_until="domcontentloaded")
-                await page.wait_for_timeout(500)
+        """Génère un PDF depuis une chaîne HTML via Chromium persistant."""
+        async with self._render_semaphore:
+            browser = await self._ensure_browser()
+            context = await browser.new_context()
+            page = await context.new_page()
+            try:
+                await page.set_content(html_string, wait_until="load")
+                try:
+                    await page.evaluate("document.fonts.ready")
+                except Exception:
+                    pass
                 pdf_bytes = await page.pdf(
                     format="A4",
                     print_background=True,
-                    margin={"top": "15mm", "right": "20mm", "bottom": "15mm", "left": "20mm"}
+                    margin={"top": "15mm", "right": "20mm", "bottom": "15mm", "left": "20mm"},
                 )
-                await browser.close()
                 pdf_buffer = BytesIO(pdf_bytes)
                 pdf_buffer.seek(0)
                 return pdf_buffer
-        except Exception as e:
-            logger.error(f"Erreur génération PDF depuis HTML: {e}", exc_info=True)
-            raise
+            except Exception as e:
+                if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+                    self._browser = None
+                logger.error(f"Erreur génération PDF depuis HTML: {e}", exc_info=True)
+                raise
+            finally:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+                try:
+                    await context.close()
+                except Exception:
+                    pass
 
     async def render_pdf(
         self,
@@ -519,28 +760,51 @@ class PDFRenderer:
         client: Client,
         currency: str = None,
     ) -> BytesIO:
+        """Génère le PDF d'un document complet via Chromium persistant."""
         try:
-            html_string = await self.render_html(db, document, template, user, client, currency)
+            html_string = await self.render_html(
+                document=document,
+                template=template,
+                user=user,
+                client=client,
+                currency=currency,
+                db=db,
+            )
 
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
-                )
-                page = await browser.new_page()
-                await page.set_content(html_string, wait_until="domcontentloaded")
-                await page.wait_for_timeout(500)
-                pdf_bytes = await page.pdf(
-                    format="A4",
-                    print_background=True,
-                    margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
-                )
-                await browser.close()
-                pdf_buffer = BytesIO(pdf_bytes)
-                pdf_buffer.seek(0)
-                return pdf_buffer
+            async with self._render_semaphore:
+                browser = await self._ensure_browser()
+                context = await browser.new_context()
+                page = await context.new_page()
+                try:
+                    await page.set_content(html_string, wait_until="load")
+                    try:
+                        await page.evaluate("document.fonts.ready")
+                    except Exception:
+                        pass
+                    pdf_bytes = await page.pdf(
+                        format="A4",
+                        print_background=True,
+                        margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+                    )
+                    pdf_buffer = BytesIO(pdf_bytes)
+                    pdf_buffer.seek(0)
+                    return pdf_buffer
+                except Exception as e:
+                    if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+                        self._browser = None
+                    logger.error(f"Erreur génération PDF: {e}", exc_info=True)
+                    raise
+                finally:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
         except Exception as e:
-            logger.error(f"Erreur génération PDF: {e}", exc_info=True)
+            logger.error(f"Erreur rendu PDF document: {e}", exc_info=True)
             raise
 
 

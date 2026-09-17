@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import Response
@@ -1589,18 +1589,22 @@ async def preview_shared_document(
 @router.get("/{document_id}/preview.png")
 async def get_document_preview_png(
     document_id: UUID,
+    request: Request,
+    width: Optional[int] = Query(None, ge=100, le=1600, description="Largeur max en pixels pour une vignette optimisée"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Génère (ou sert depuis le cache) la preview PNG d'un document."""
-    logger.info(f"🖼️ GET /{document_id}/preview.png")
+    """Génère (ou sert depuis le cache mémoire/disque/navigateur) la preview PNG d'un document."""
+    logger.info(f"🖼️ GET /{document_id}/preview.png (width={width})")
 
-    # ✅ Charger avec items + schedule (nécessaires pour le hash de cache)
+    # ✅ Chargement groupé (items + schedule + client + template) en une seule requête SQL
     result = await db.execute(
         select(Document)
         .options(
             selectinload(Document.items),
             selectinload(Document.payment_schedule),
+            selectinload(Document.client),
+            selectinload(Document.template),
         )
         .where(Document.id == document_id, Document.user_id == current_user.id)
     )
@@ -1608,28 +1612,55 @@ async def get_document_preview_png(
     if not document:
         raise HTTPException(status_code=404, detail="Document introuvable")
 
-    client = await ClientService.get_by_id(db, document.client_id, current_user.id)
+    client = document.client
+    if not client:
+        client = await ClientService.get_by_id(db, document.client_id, current_user.id)
     if not client:
         raise HTTPException(status_code=404, detail="Client introuvable")
 
     template = await _get_document_template(db, document, current_user)
 
-    # ✅ Passe par le cache intelligent
+    # ✅ Calcul instantané du hash du rendu visuel
+    content_hash = pdf_renderer.compute_render_hash(
+        document=document,
+        template=template,
+        user=current_user,
+        client=client,
+        items=document.items,
+        schedule=document.payment_schedule,
+    )
+    etag = f'"{content_hash}"' if not width else f'"{content_hash}_w{width}"'
+
+    # ✅ Validation conditionnelle HTTP 304 (0 octet transféré, rendu navigateur instantané)
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and (if_none_match == etag or if_none_match == f'W/{etag}'):
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "private, max-age=300, stale-while-revalidate=86400",
+            },
+        )
+
+    # ✅ Cache intelligent (Mémoire LRU + Disque + Single-flight)
     png_bytes = await pdf_renderer.get_or_render_document_png(
         db=db,
         document=document,
         template=template,
         user=current_user,
         client=client,
+        content_hash=content_hash,
+        width=width,
     )
 
     return Response(
         content=png_bytes,
         media_type="image/png",
         headers={
-            # Cache navigateur court : le cache serveur fait le gros du travail
-            "Cache-Control": "private, max-age=30, must-revalidate",
+            "ETag": etag,
+            "Cache-Control": "private, max-age=300, stale-while-revalidate=86400",
             "Content-Disposition": f'inline; filename="preview-{document_id}.png"',
+            "Content-Length": str(len(png_bytes)),
         },
     )
 
@@ -1848,6 +1879,9 @@ def _enrich_document(doc, totals: dict) -> dict:
 
 
 async def _get_document_template(db: AsyncSession, document, user: User):
+    if getattr(document, "template", None) is not None:
+        return document.template
+
     if document.template_id:
         tmpl = await TemplateService.get_by_id(db, document.template_id, user.id)
         if tmpl:
